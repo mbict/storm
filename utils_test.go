@@ -55,17 +55,18 @@ func newTestDb() (*sql.DB) {
 		panic("Cannot open database for testing error" + err.Error() )
 	}
 	
+	//where to put this
 	sql := `
 CREATE TABLE customer (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255));
+INSERT INTO customer(id,name) VALUES (1,'customer1') (2,'customer2') (3,'customer3');
 CREATE TABLE order (id INTEGER NOT NULL PRIMARY KEY);
 CREATE TABLE product (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255), price REAL);
 `
 	 _, err = db.Exec( sql )
      if err != nil {
+     	db.Close()
      	panic("Cannot execute query '"+sql+"' got error "+err.Error())
      }
-		
-	defer db.Close()
 	
 	return db;
 }

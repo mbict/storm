@@ -80,7 +80,14 @@ func (r Repository) AddStructure(structure interface{}, name string) (*TableMap,
 }
 
 //Check if the repository has a table map matching the name
-func (r Repository) hasTableMap(name string) bool {
+func (r Repository) hasTableMap(name string) (bool) {
 	_, ok := r.tables[name]
 	return ok
+}
+
+func (r Repository) getTableMap(name string) (*TableMap) {
+	if tblMap, ok := r.tables[name]; ok {
+		return tblMap
+	}
+	return nil
 }

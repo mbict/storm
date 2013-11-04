@@ -30,8 +30,25 @@ func NewStorm(db *sql.DB, repository *Repository) *Storm {
 //get a single entity from the datastore
 func (a Storm) Get(entityName string, keys ...interface{}) (interface{}, error) {
 
-	if !a.repository.hasTableMap(entityName) {
+	tblMap := a.repository.getTableMap(entityName)
+	if tblMap == nil {
 		return nil, errors.New("No entity with the name '" + entityName + "' found")
+	}
+	
+	stmt, err := a.db.Prepare("SELECT id, name FROM "+tblMap.Name+" WHERE id = ?")
+	if err != nil {
+		return nil, errors.New("Error in prepared statement '" + err.Error() + "'")
+	}
+	defer stmt.Close()
+	
+	row := stmt.QueryRow(keys...)
+
+
+	structFields := make([]interface{}, len(tblMap.columns))
+
+	err = row.Scan(structFields...)
+	if err != nil {
+		return nil, errors.New("Error in while scanning resilt '" + err.Error() + "'")
 	}
 
 	return nil, nil

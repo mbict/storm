@@ -10,9 +10,9 @@ func TestGet(t *testing.T) {
 	entity, err := storm.Get("customer",1)
 	
 	if err != nil {
-		t.Errorf("Returned a error with message \"%v\" while adding a element", err)
-	} 
-	
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+		
 	if entity == nil {
 		t.Fatalf("Returned an empty entity")
 	}
@@ -25,7 +25,6 @@ func TestGet(t *testing.T) {
 	if customer.Id != 1 || customer.Name != "customer1" {
 		t.Errorf("Entity data mismatch, expected a customer{Id:1, Name:'customer1'}")
 	}
-	
 }
 
 func TestGetNonExistingEntityError(t *testing.T) {
@@ -42,7 +41,7 @@ func TestGetNonExistingEntityError(t *testing.T) {
 	}
 	
 	if entity != nil {
-		t.Errorf("No entity should be returned but got something back")
+		t.Fatalf("No entity should be returned but got something back")
 	}
 	
 }
