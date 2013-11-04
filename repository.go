@@ -51,31 +51,6 @@ func (r Repository) AddStructure(structure interface{}, name string) (*TableMap,
 	//add columns to list
 	r.tables[name] = tblMap
 
-	//fmt.Println("Element name: ", t.Name())
-	//fmt.Println(a.tables)
-	/*
-		f := reflect.New(t)
-		dst := f.Elem()
-
-		fmt.Println("reflect create", f)
-		fmt.Println("reflect create", f.Elem())
-
-		aa := dst.Addr().Interface()
-
-		fmt.Println("reflect create a dst.interface", aa)
-		fmt.Println("reflect create a &dst.Interface", &aa)
-
-		f.Elem().FieldByName("Id").SetInt(1234)
-
-		dst2 := dst.Addr().Interface()
-
-		fmt.Println("reflect create b dst.interface", aa)
-		fmt.Println("reflect create b &dst.Interface", &aa)
-
-		fmt.Println("reflect create c dst2.interface", dst2)
-		fmt.Println("reflect create c &dst2.Interface", &dst2)
-	*/
-
 	return tblMap, nil
 }
 

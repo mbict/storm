@@ -56,17 +56,21 @@ func newTestDb() (*sql.DB) {
 	}
 	
 	//where to put this
-	sql := `
-CREATE TABLE customer (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255));
-INSERT INTO customer(id,name) VALUES (1,'customer1') (2,'customer2') (3,'customer3');
-CREATE TABLE order (id INTEGER NOT NULL PRIMARY KEY);
-CREATE TABLE product (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255), price REAL);
-`
-	 _, err = db.Exec( sql )
-     if err != nil {
+	
+	_, err = db.Exec( "CREATE TABLE customer (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255));" )
+	_, err = db.Exec( "INSERT INTO customer(`id`,`name`) VALUES (1,'customer1');" )	
+	_, err = db.Exec( "INSERT INTO customer(`id`,`name`) VALUES (2,'customer2');" )	
+	_, err = db.Exec( "INSERT INTO customer(`id`,`name`) VALUES (3,'customer3');" )	
+
+    if err != nil {
      	db.Close()
-     	panic("Cannot execute query '"+sql+"' got error "+err.Error())
+     	panic("Cannot execute insert query got error "+err.Error())
      }
+
+	_, err = db.Exec( "CREATE TABLE order (id INTEGER NOT NULL PRIMARY KEY);" )	
+	_, err = db.Exec( "CREATE TABLE product (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255), price REAL);" )	
+
+
 	
 	return db;
 }

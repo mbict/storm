@@ -19,7 +19,7 @@ func TestGet(t *testing.T) {
 	
 	customer, ok := entity.(*Customer)
 	if !ok {
-		t.Fatalf("Conversion of returned entity failed to *TestStructureWithTags")
+		t.Fatalf("Conversion of returned entity failed to *Customer")
 	}
 	
 	if customer.Id != 1 || customer.Name != "customer1" {
