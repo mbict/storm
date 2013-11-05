@@ -27,6 +27,29 @@ func TestGet(t *testing.T) {
 	}
 }
 
+func TestGetForEmbeddedStruct(t *testing.T) {
+
+	storm := newTestStorm()
+	entity, err := storm.Get("product",2)
+	
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+		
+	if entity == nil {
+		t.Fatalf("Returned an empty entity")
+	}
+	
+	product, ok := entity.(*Product)
+	if !ok {
+		t.Fatalf("Conversion of returned entity failed to *Product")
+	}
+	
+	if product.Id != 2 || product.Name != "product2" || product.Price != 12.02 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02} }, product)
+	}
+}
+
 func TestGetNonExistingEntityError(t *testing.T) {
 
 	storm := newTestStorm()

@@ -37,8 +37,9 @@ func (r Repository) AddStructure(structure interface{}, name string) (*TableMap,
 	if r.tables[name] != nil {
 		return nil, errors.New("Duplicate structure, name: " + name + "  with type :'" + r.tables[name].goType.String() + "' already exists")
 	}
-
-	columns, keys := readStructColumns(t)
+	
+	//read the structure
+	columns, keys := readStructColumns(t, nil)
 
 	//add table map
 	tblMap := &TableMap{

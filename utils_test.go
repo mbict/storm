@@ -26,10 +26,14 @@ type Order struct {
         Id     int    `db:"pk"`
 }
 
+type ProductDescription struct {
+	Name string
+    Price float64
+}
+
 type Product struct {
-        Id     int    `db:"pk"`
-        Name string
-        Price float64
+    Id     int    `db:"pk"`
+    ProductDescription
 }
 
 func newTestStorm() (*Storm) {
@@ -69,7 +73,9 @@ func newTestDb() (*sql.DB) {
 
 	_, err = db.Exec( "CREATE TABLE order (id INTEGER NOT NULL PRIMARY KEY);" )	
 	_, err = db.Exec( "CREATE TABLE product (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(255), price REAL);" )	
-
+	_, err = db.Exec( "INSERT INTO product(`id`,`name`,`price`) VALUES (1,'product1', 12.01);" )
+	_, err = db.Exec( "INSERT INTO product(`id`,`name`,`price`) VALUES (2,'product2', 12.02);" )
+	_, err = db.Exec( "INSERT INTO product(`id`,`name`,`price`) VALUES (3,'product3', 12.03);" )
 
 	
 	return db;

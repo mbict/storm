@@ -6,6 +6,7 @@ import (
 )
 
 type TableMap struct {
+	//table name
 	Name string
 
 	goType  reflect.Type
@@ -13,7 +14,8 @@ type TableMap struct {
 	keys    []*ColumnMap
 }
 
-func (a *TableMap) String() string {
+//create a string representation of this structure
+func (a TableMap) String() string {
 	r := "TableMap:" + a.Name + "(" + a.goType.String() + ") : \n"
 
 	for i := range a.columns {
@@ -26,6 +28,24 @@ func (a *TableMap) String() string {
 	}
 
 	return r
+}
+
+//returns all column names
+func (a TableMap) columnNames() []string {
+	var colNames []string
+	for _, column := range a.columns {
+		colNames = append(colNames, column.Name)
+	}
+	return colNames;
+}
+
+//returns all the key colummns
+func (a TableMap) keyNames() []string {
+	var colNames []string
+	for _, column := range a.keys {
+		colNames = append(colNames, column.Name)
+	}
+	return colNames;
 }
 
 // -- helper functions
@@ -49,15 +69,15 @@ func parseTags(s string) map[string]string {
 }
 
 // read out the structure and return the column map
-func readStructColumns(t reflect.Type) (cols []*ColumnMap, keys []*ColumnMap) {
+func readStructColumns(t reflect.Type, depth []int) (cols []*ColumnMap, keys []*ColumnMap) {
 	n := t.NumField()
 	for i := 0; i < n; i++ {
 		f := t.Field(i)
 		if f.Anonymous && f.Type.Kind() == reflect.Struct {
 			//if the embeded element is a structure ignore it for now
-			//subcols, subkeys := readStructColumns(f.Type)
-			//cols = append(cols, subcols...)
-			//keys = append(keys, subkeys...)
+			subcols, subkeys := readStructColumns(f.Type, append(depth, f.Index...) )
+			cols = append(cols, subcols...)
+			keys = append(keys, subkeys...)
 			continue
 		} else {
 			tags := parseTags(f.Tag.Get("db"))
@@ -70,10 +90,12 @@ func readStructColumns(t reflect.Type) (cols []*ColumnMap, keys []*ColumnMap) {
 			if columnName == "" {
 				columnName = strings.ToLower(f.Name)
 			}
+			
 			colMap := &ColumnMap{
 				Name:      columnName,
-				fieldName: f.Name,
+				varName: f.Name,
 				goType:    f.Type,
+				goIndex: append(depth, f.Index...),
 			}
 			cols = append(cols, colMap)
 
