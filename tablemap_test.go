@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestParseTags(t *testing.T) {
+func TestTableMap_ParseTags(t *testing.T) {
 
 	//test empty tag
 	tags := parseTags("")
@@ -39,7 +39,7 @@ func TestParseTags(t *testing.T) {
 
 }
 
-func TestReadColumnStructWithTags(t *testing.T) {
+func TestTableMap_ReadColumnStructWithTags(t *testing.T) {
 
 	columns, keys := readStructColumns(reflect.TypeOf(TestStructureWithTags{}), nil)
 
@@ -79,7 +79,7 @@ func TestReadColumnStructWithTags(t *testing.T) {
 	}
 }
 
-func TestReadEmbeddedStruct(t *testing.T) {
+func Test_TableMapReadEmbeddedStruct(t *testing.T) {
 
 	columns, keys := readStructColumns(reflect.TypeOf(Product{}), nil)
 

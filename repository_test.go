@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestAddStructure(t *testing.T) {
+func TestRepository_AddStructure(t *testing.T) {
 
 	repo := NewRepository(&Dialect{})
 	tblMap, err := repo.AddStructure(TestStructureWithTags{}, "TestStructureElement")
@@ -19,7 +19,7 @@ func TestAddStructure(t *testing.T) {
 	}
 }
 
-func TestAddStructureWithPointer(t *testing.T) {
+func Test_Repository_AddStructureWithPointer(t *testing.T) {
 
 	repo := NewRepository(&Dialect{})
 	tblMap, err := repo.AddStructure(&TestStructureWithTags{}, "TestStructureElement")
@@ -32,7 +32,7 @@ func TestAddStructureWithPointer(t *testing.T) {
 	}
 }
 
-func TestAddStructureInvalidTypes(t *testing.T) {
+func TestRepository_AddStructureInvalidTypes(t *testing.T) {
 
 	var err error
 	repo := NewRepository(&Dialect{})
@@ -50,7 +50,7 @@ func TestAddStructureInvalidTypes(t *testing.T) {
 	}
 }
 
-func TestAddStructureDuplicates(t *testing.T) {
+func TestRepository_AddStructureDuplicates(t *testing.T) {
 
 	var err error
 	repo := NewRepository(&Dialect{})

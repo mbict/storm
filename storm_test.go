@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestGet(t *testing.T) {
+func TestStorm_Get(t *testing.T) {
 
 	storm := newTestStorm()
 	entity, err := storm.Get("customer",1)
@@ -27,7 +27,7 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestGetForEmbeddedStruct(t *testing.T) {
+func TestStorm_GetWithEmbeddedStruct(t *testing.T) {
 
 	storm := newTestStorm()
 	entity, err := storm.Get("product",2)
@@ -50,7 +50,7 @@ func TestGetForEmbeddedStruct(t *testing.T) {
 	}
 }
 
-func TestGetNonExistingEntityError(t *testing.T) {
+func TestStorm_GetNonExistingEntityError(t *testing.T) {
 
 	storm := newTestStorm()
 	entity, err := storm.Get("notExisting",1)

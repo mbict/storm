@@ -46,6 +46,8 @@ func newTestRepository() (*Repository) {
 	repo := NewRepository( &Dialect{} )
 	
 	//default test objects
+	repo.AddStructure(TestStructure{}, "test")
+	repo.AddStructure(TestStructureWithTags{}, "testTags")
 	repo.AddStructure(Customer{}, "customer")
 	repo.AddStructure(Order{},"order")
 	repo.AddStructure(Product{},"product")
