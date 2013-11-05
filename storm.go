@@ -64,58 +64,22 @@ func (a Storm) Get(entityName string, keys ...interface{}) (interface{}, error) 
 	
 	row := stmt.QueryRow(bind...)
 	
-	
-	
-	//fmt.Println("Element name: ", t.Name())
-	//fmt.Println(a.tables)
-	/*
-		f := reflect.New(t)
-		dst := f.Elem()
-
-		fmt.Println("reflect create", f)
-		fmt.Println("reflect create", f.Elem())
-
-		aa := dst.Addr().Interface()
-
-		fmt.Println("reflect create a dst.interface", aa)
-		fmt.Println("reflect create a &dst.Interface", &aa)
-
-		f.Elem().FieldByName("Id").SetInt(1234)
-
-		dst2 := dst.Addr().Interface()
-
-		fmt.Println("reflect create b dst.interface", aa)
-		fmt.Println("reflect create b &dst.Interface", &aa)
-
-		fmt.Println("reflect create c dst2.interface", dst2)
-		fmt.Println("reflect create c &dst2.Interface", &dst2)
-	*/
-	
-	
-	
-	//var test2 string
-	//var test int
-	
-
-	//vt.Elem().Fi
-		
+	//create a new structure
 	vt := reflect.New( q.tblMap.goType )
+	
+	//get the columns in the structure
 	scanFields := make([]interface{}, len(q.tblMap.columns))
 	for key, col := range q.tblMap.columns {
 		scanFields[key] = vt.Elem().FieldByIndex(col.goIndex).Addr().Interface()
 	}
-	
-//	structFields[0] = vt.Elem().FieldByName("Id").Addr().Interface()
-//	structFields[1] = vt.Elem().FieldByName("Name").Addr().Interface()
-	
+
+	//scan the row into the struct
 	err = row.Scan(scanFields...)
 	if err != nil {
 		return nil, errors.New("Error in while scanning result '" + err.Error() + "'")
 	}
 
-	dst := vt.Interface()
-
-	return dst, nil
+	return vt.Interface(), nil
 }
 
 //get all the database entries
