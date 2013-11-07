@@ -1,8 +1,8 @@
 package storm
 
 import (
-	"reflect"
 	"fmt"
+	"reflect"
 )
 
 type ColumnMap struct {
@@ -11,7 +11,7 @@ type ColumnMap struct {
 
 	//name of the variable in the struct
 	varName string
-	goType    reflect.Type
+	goType  reflect.Type
 	goIndex []int
 }
 

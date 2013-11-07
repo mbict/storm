@@ -34,12 +34,12 @@ func (r Repository) AddStructure(structure interface{}, name string) (*TableMap,
 		return nil, errors.New("Input value is not a struct but a " + t.Kind().String())
 	}
 
-	if r.tables[name] != nil {
+	if _, ok := r.tables[name]; ok {
 		return nil, errors.New("Duplicate structure, name: " + name + "  with type :'" + r.tables[name].goType.String() + "' already exists")
 	}
-	
+
 	//read the structure
-	columns, keys := readStructColumns(t, nil)
+	columns, keys := readStructColumns(structure, nil)
 
 	//add table map
 	tblMap := &TableMap{
@@ -56,14 +56,24 @@ func (r Repository) AddStructure(structure interface{}, name string) (*TableMap,
 }
 
 //Check if the repository has a table map matching the name
-func (r Repository) hasTableMap(name string) (bool) {
+func (r Repository) hasTableMap(name string) bool {
 	_, ok := r.tables[name]
 	return ok
 }
 
-func (r Repository) getTableMap(name string) (*TableMap) {
+func (r Repository) getTableMap(name string) *TableMap {
 	if tblMap, ok := r.tables[name]; ok {
 		return tblMap
+	}
+	return nil
+}
+
+func (r Repository) tableMapByType(goType reflect.Type) *TableMap {
+
+	for _, tblMap := range r.tables {
+		if tblMap.goType == goType {
+			return tblMap
+		}
 	}
 	return nil
 }

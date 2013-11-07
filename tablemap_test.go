@@ -41,7 +41,7 @@ func TestTableMap_ParseTags(t *testing.T) {
 
 func TestTableMap_ReadColumnStructWithTags(t *testing.T) {
 
-	columns, keys := readStructColumns(reflect.TypeOf(TestStructureWithTags{}), nil)
+	columns, keys := readStructColumns(TestStructureWithTags{}, nil)
 
 	//check the column count, ignoring 1 column
 	if len(columns) != 2 {
@@ -79,9 +79,9 @@ func TestTableMap_ReadColumnStructWithTags(t *testing.T) {
 	}
 }
 
-func Test_TableMapReadEmbeddedStruct(t *testing.T) {
+func TestTableMap_ReadStructColumnsWithEmbeddedStruct(t *testing.T) {
 
-	columns, keys := readStructColumns(reflect.TypeOf(Product{}), nil)
+	columns, keys := readStructColumns(Product{}, nil)
 
 	//check the column count
 	if len(columns) != 3 {
@@ -102,7 +102,7 @@ func Test_TableMapReadEmbeddedStruct(t *testing.T) {
 	if columns[1].varName != "Name" {
 		t.Errorf("Expected var name 'name', got '%s'", columns[1].varName)
 	}
-	
+
 	//column name should be lower case based on the structure name
 	if columns[2].varName != "Price" {
 		t.Errorf("Expected var name 'name', got '%s'", columns[2].varName)
@@ -117,8 +117,8 @@ func Test_TableMapReadEmbeddedStruct(t *testing.T) {
 	if columns[1].goType.Kind() != reflect.String {
 		t.Errorf("Expected column name to be of type string, got '%s'", columns[1].goType.String())
 	}
-	
-		//check type is a string on column name
+
+	//check type is a string on column name
 	if columns[2].goType.Kind() != reflect.Float64 {
 		t.Errorf("Expected column price to be of type string, got '%s'", columns[2].goType.String())
 	}

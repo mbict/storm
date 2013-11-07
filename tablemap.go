@@ -36,7 +36,7 @@ func (a TableMap) columnNames() []string {
 	for _, column := range a.columns {
 		colNames = append(colNames, column.Name)
 	}
-	return colNames;
+	return colNames
 }
 
 //returns all the key colummns
@@ -45,7 +45,7 @@ func (a TableMap) keyNames() []string {
 	for _, column := range a.keys {
 		colNames = append(colNames, column.Name)
 	}
-	return colNames;
+	return colNames
 }
 
 // -- helper functions
@@ -69,20 +69,34 @@ func parseTags(s string) map[string]string {
 }
 
 // read out the structure and return the column map
-func readStructColumns(t reflect.Type, depth []int) (cols []*ColumnMap, keys []*ColumnMap) {
+func readStructColumns(in interface{}, depth []int) (cols []*ColumnMap, keys []*ColumnMap) {
+
+	v := reflect.ValueOf(in)
+	t := v.Type()
+
+	//no pointers
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		v = v.Elem()
+	}
+
 	n := t.NumField()
 	for i := 0; i < n; i++ {
 		f := t.Field(i)
 		if f.Anonymous && f.Type.Kind() == reflect.Struct {
 			//if the embeded element is a structure ignore it for now
-			subcols, subkeys := readStructColumns(f.Type, append(depth, f.Index...) )
+			subcols, subkeys := readStructColumns(v.Field(i).Interface(), append(depth, f.Index...))
 			cols = append(cols, subcols...)
 			keys = append(keys, subkeys...)
 			continue
 		} else {
+			index := append(depth, f.Index...)
+
 			tags := parseTags(f.Tag.Get("db"))
 
-			if _, ok := tags["ignore"]; ok {
+			//ignore tag, or when not exported we ignore it
+			_, ok := tags["ignore"]
+			if ok || !v.Field(i).CanInterface() {
 				continue
 			}
 
@@ -90,12 +104,12 @@ func readStructColumns(t reflect.Type, depth []int) (cols []*ColumnMap, keys []*
 			if columnName == "" {
 				columnName = strings.ToLower(f.Name)
 			}
-			
+
 			colMap := &ColumnMap{
-				Name:      columnName,
+				Name:    columnName,
 				varName: f.Name,
-				goType:    f.Type,
-				goIndex: append(depth, f.Index...),
+				goType:  f.Type,
+				goIndex: index,
 			}
 			cols = append(cols, colMap)
 
@@ -105,5 +119,18 @@ func readStructColumns(t reflect.Type, depth []int) (cols []*ColumnMap, keys []*
 			}
 		}
 	}
+
+	//try to determine auto pk if no one is defined in a tag
+	if len(keys) == 0 {
+		for _, col := range cols {
+
+			if col.goType.Kind() == reflect.Int && strings.ToLower(col.Name) == "id" {
+				keys = append(keys, col)
+				break
+			}
+
+		}
+	}
+
 	return cols, keys
 }
