@@ -119,18 +119,22 @@ func (a *Storm) Save(entity interface{}) error {
 	q := NewQuery(tblMap, a)
 
 	//add the columns
+	var bindValues []interface{}
 	for _, col := range q.tblMap.columns {
 		//ignore pk
 		if tblMap.keys[0] != col {
 			q.Column(col.Name)
+			bindValues = append(bindValues, v.FieldByIndex(col.goIndex).Interface())
 		}
 	}
 
 	//update if pk is non zero
+	var sql string
+	var bind []interface{}
 	pkValue := v.FieldByIndex(tblMap.keys[0].goIndex).Interface()
 	if pkValue == 0 {
 		//insert
-		sql, _ := q.prepareInsert()
+		sql, bind = q.prepareInsert()
 
 		fmt.Printf("SQL INSERT:'%v'\n", sql)
 
@@ -140,9 +144,21 @@ func (a *Storm) Save(entity interface{}) error {
 		//add pk where
 		q.Where(fmt.Sprintf("%v = ?", tblMap.keys[0].Name), pkValue)
 
-		sql, _ := q.prepareUpdate()
+		sql, bind = q.prepareUpdate()
 
 		fmt.Printf("SQL UPDATE:'%v'\n", sql)
+	}
+
+	bind = append(bindValues, bind...)
+	stmt, err := a.db.Prepare(sql)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(bind...)
+	if err != nil {
+		return err
 	}
 
 	return nil
