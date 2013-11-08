@@ -5,11 +5,11 @@ import (
 	//"bytes"
 )
 
-func TestQuery_prepareSelect(t *testing.T) {
+func TestQuery_generateSelect(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("customer"), storm)
 
-	sql, bind := q.prepareSelect()
+	sql, bind := q.generateSelectSQL()
 
 	if len(bind) != 0 {
 		t.Errorf("Expected to get 0 columns to bind but got %v columns back", len(bind))
@@ -21,7 +21,7 @@ func TestQuery_prepareSelect(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareSelectWhereOffsetLimitOrder(t *testing.T) {
+func TestQuery_generateSelectWhereOffsetLimitOrder(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("customer"), storm)
 	q.Where("id = ?", 1).
@@ -31,7 +31,7 @@ func TestQuery_prepareSelectWhereOffsetLimitOrder(t *testing.T) {
 		Order("id", ASC).
 		Order("name", DESC)
 
-	sql, bind := q.prepareSelect()
+	sql, bind := q.generateSelectSQL()
 
 	if len(bind) != 2 {
 		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))
@@ -43,16 +43,12 @@ func TestQuery_prepareSelectWhereOffsetLimitOrder(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareInsert(t *testing.T) {
+func TestQuery_generateInsert(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 	q.Column("name")
 
-	sql, bind := q.prepareInsert()
-
-	if len(bind) != 0 {
-		t.Errorf("Expected to get no column back to bind but got %v columns back", len(bind))
-	}
+	sql := q.generateInsertSQL()
 
 	sqlExpected := "INSERT INTO `product`(`name`) VALUES (?)"
 	if sql != sqlExpected {
@@ -60,15 +56,11 @@ func TestQuery_prepareInsert(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareInsertAutoColumns(t *testing.T) {
+func TestQuery_generateInsertAutoColumns(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 
-	sql, bind := q.prepareInsert()
-
-	if len(bind) != 0 {
-		t.Errorf("Expected to get no columns back to bind but got %v columns back", len(bind))
-	}
+	sql := q.generateInsertSQL()
 
 	sqlExpected := "INSERT INTO `product`(`name`, `price`) VALUES (?, ?)"
 	if sql != sqlExpected {
@@ -76,12 +68,12 @@ func TestQuery_prepareInsertAutoColumns(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareUpdate(t *testing.T) {
+func TestQuery_generateUpdate(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 	q.Column("name").Where("id = ?", 1)
 
-	sql, bind := q.prepareUpdate()
+	sql, bind := q.generateUpdateSQL()
 
 	if len(bind) != 1 {
 		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
@@ -93,12 +85,12 @@ func TestQuery_prepareUpdate(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareUpdateAutoColumns(t *testing.T) {
+func TestQuery_generateUpdateAutoColumns(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 	q.Where("id = ?", 1)
 
-	sql, bind := q.prepareUpdate()
+	sql, bind := q.generateUpdateSQL()
 	if len(bind) != 1 {
 		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
 	}
@@ -109,13 +101,13 @@ func TestQuery_prepareUpdateAutoColumns(t *testing.T) {
 	}
 }
 
-func TestQuery_prepareDelete(t *testing.T) {
+func TestQuery_generateDelete(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("customer"), storm)
 	q.Where("id = ?", 1).
 		Where("name = ?", "test")
 
-	sql, bind := q.prepareDelete()
+	sql, bind := q.generateDeleteSQL()
 
 	if len(bind) != 2 {
 		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))

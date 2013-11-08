@@ -89,7 +89,7 @@ func (q *Query) Count() (int, error) {
 }
 
 //perpare a select statement
-func (q *Query) prepareSelect() (string, []interface{}) {
+func (q *Query) generateSelectSQL() (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
@@ -154,7 +154,7 @@ func (q *Query) prepareSelect() (string, []interface{}) {
 	return sql.String(), bindVars
 }
 
-func (q *Query) prepareDelete() (string, []interface{}) {
+func (q *Query) generateDeleteSQL() (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
@@ -183,8 +183,7 @@ func (q *Query) prepareDelete() (string, []interface{}) {
 	return sql.String(), bindVars
 }
 
-func (q *Query) prepareInsert() (string, []interface{}) {
-	//var bindVars []interface{}
+func (q *Query) generateInsertSQL() string {
 	var sql bytes.Buffer
 	var sqlValues bytes.Buffer
 	var pos int
@@ -220,10 +219,10 @@ func (q *Query) prepareInsert() (string, []interface{}) {
 	}
 	sql.WriteString(fmt.Sprintf(") VALUES (%s)", sqlValues.String()))
 
-	return sql.String(), nil
+	return sql.String()
 }
 
-func (q *Query) prepareUpdate() (string, []interface{}) {
+func (q *Query) generateUpdateSQL() (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer

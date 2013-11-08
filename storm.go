@@ -62,7 +62,7 @@ func (a *Storm) Get(entityName string, keys ...interface{}) (interface{}, error)
 		q.Where(fmt.Sprintf("`%v` = ?", col.Name), keys[key])
 	}
 
-	sql, bind := q.prepareSelect()
+	sql, bind := q.generateSelectSQL()
 	stmt, err := a.db.Prepare(sql)
 	if err != nil {
 		return nil, err
@@ -134,19 +134,13 @@ func (a *Storm) Save(entity interface{}) error {
 	pkValue := v.FieldByIndex(tblMap.keys[0].goIndex).Interface()
 	if pkValue == 0 {
 		//insert
-		sql, bind = q.prepareInsert()
-
-		fmt.Printf("SQL INSERT:'%v'\n", sql)
-
+		sql = q.generateInsertSQL()
 	} else {
 		//update
 
 		//add pk where
 		q.Where(fmt.Sprintf("%v = ?", tblMap.keys[0].Name), pkValue)
-
-		sql, bind = q.prepareUpdate()
-
-		fmt.Printf("SQL UPDATE:'%v'\n", sql)
+		sql, bind = q.generateUpdateSQL()
 	}
 
 	bind = append(bindValues, bind...)
@@ -186,7 +180,7 @@ func (a *Storm) Delete(entity interface{}) error {
 		q.Where(fmt.Sprintf("`%v` = ?", col.Name), v.FieldByIndex(col.goIndex).Interface())
 	}
 
-	sql, bind := q.prepareDelete()
+	sql, bind := q.generateDeleteSQL()
 	stmt, err := a.db.Prepare(sql)
 	if err != nil {
 		return err
