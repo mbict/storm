@@ -21,6 +21,7 @@ type QueryInterface interface {
 	Limit(limit int) *QueryInterface
 	Offset(offset int) *QueryInterface
 	Exec() ([]interface{}, error)
+	Count() (int, error)
 }
 
 type Query struct {
@@ -81,6 +82,10 @@ func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
 
 func (q *Query) Exec() ([]interface{}, error) {
 	return nil, nil
+}
+
+func (q *Query) Count() (int, error) {
+	return 0, nil
 }
 
 //perpare a select statement

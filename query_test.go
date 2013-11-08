@@ -43,6 +43,72 @@ func TestQuery_prepareSelectWhereOffsetLimitOrder(t *testing.T) {
 	}
 }
 
+func TestQuery_prepareInsert(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+	q.Column("name")
+
+	sql, bind := q.prepareInsert()
+
+	if len(bind) != 0 {
+		t.Errorf("Expected to get no column back to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "INSERT INTO `product`(`name`) VALUES (?)"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
+func TestQuery_prepareInsertAutoColumns(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	sql, bind := q.prepareInsert()
+
+	if len(bind) != 0 {
+		t.Errorf("Expected to get no columns back to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "INSERT INTO `product`(`name`, `price`) VALUES (?, ?)"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
+func TestQuery_prepareUpdate(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+	q.Column("name").Where("id = ?", 1)
+
+	sql, bind := q.prepareUpdate()
+
+	if len(bind) != 1 {
+		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "UPDATE `product` SET `name` = ? WHERE id = ?"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
+func TestQuery_prepareUpdateAutoColumns(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+	q.Where("id = ?", 1)
+
+	sql, bind := q.prepareUpdate()
+	if len(bind) != 1 {
+		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "UPDATE `product` SET `name` = ?, `price` = ? WHERE id = ?"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
 func TestQuery_prepareDelete(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("customer"), storm)
@@ -59,4 +125,12 @@ func TestQuery_prepareDelete(t *testing.T) {
 	if sql != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
 	}
+}
+
+func TestQuery_Exec(t *testing.T) {
+	t.Fatalf("Not implemented")
+}
+
+func TestQuery_Count(t *testing.T) {
+	t.Fatalf("Not implemented")
 }
