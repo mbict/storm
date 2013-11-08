@@ -4,6 +4,7 @@ import (
 	//"errors"
 	"bytes"
 	"fmt"
+	"reflect"
 	//"database/sql"
 )
 
@@ -80,12 +81,109 @@ func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
 	return q
 }
 
+//execute a select
 func (q *Query) Exec() ([]interface{}, error) {
-	return nil, nil
+
+	sql, bind := q.generateSelectSQL()
+	stmt, err := q.storm.db.Prepare(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(bind...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var data []interface{}
+
+	for {
+		if !rows.Next() {
+			// if error occured return rawselect
+			if rows.Err() != nil {
+				return nil, rows.Err()
+			}
+			return data, nil
+		}
+
+		v := reflect.New(q.tblMap.goType)
+		dest := make([]interface{}, len(q.tblMap.columns))
+		for key, col := range q.tblMap.columns {
+			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
+		}
+		err = rows.Scan(dest...)
+		if err != nil {
+			return nil, err
+		}
+
+		data = append(data, v.Interface())
+	}
+
+	/*
+		//create a new structure
+
+
+		//get the columns in the structure
+		scanFields := make([]interface{}, len(q.tblMap.columns))
+		for key, col := range q.tblMap.columns {
+			scanFields[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
+		}
+
+		//scan the row into the struct
+		err = row.Scan(scanFields...)
+		if err != nil {
+			if "sql: no rows in result set" == err.Error() {
+				//no row found we return nil
+				return nil, nil
+			}
+			return nil, errors.New("Error while scanning result '" + err.Error() + "'")
+		}
+	*/
+	//return v.Interface(), nil
 }
 
+//execute a count
 func (q *Query) Count() (int, error) {
-	return 0, nil
+
+	var bindVars []interface{}
+	var sql bytes.Buffer
+
+	//add table name
+	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM `%v`", q.tblMap.Name))
+
+	//add where
+	if len(q.where) > 0 {
+
+		sql.WriteString(" WHERE ")
+
+		//create where keys
+		pos := 0
+		for cond, attr := range q.where {
+			if pos > 0 {
+				sql.WriteString(" AND ")
+			}
+			sql.WriteString(cond)
+
+			bindVars = append(bindVars, attr...)
+			pos++
+		}
+	}
+
+	stmt, err := q.storm.db.Prepare(sql.String())
+	if err != nil {
+		return 0, err
+	}
+
+	var count int
+	row := stmt.QueryRow(bindVars...)
+	err = row.Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 //perpare a select statement
@@ -99,12 +197,22 @@ func (q *Query) generateSelectSQL() (string, []interface{}) {
 
 	//create columns
 	pos = 0
-	for _, col := range q.tblMap.columns {
-		if pos > 0 {
-			sql.WriteString(", ")
+	if len(q.columns) > 0 {
+		for _, col := range q.columns {
+			if pos > 0 {
+				sql.WriteString(", ")
+			}
+			sql.WriteString(fmt.Sprintf("`%v`", col))
+			pos++
 		}
-		sql.WriteString(fmt.Sprintf("`%v`", col.Name))
-		pos++
+	} else {
+		for _, col := range q.tblMap.columns {
+			if pos > 0 {
+				sql.WriteString(", ")
+			}
+			sql.WriteString(fmt.Sprintf("`%v`", col.Name))
+			pos++
+		}
 	}
 
 	//add table name

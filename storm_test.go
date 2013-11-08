@@ -181,45 +181,18 @@ func TestStorm_SaveNewEntity(t *testing.T) {
 		t.Fatalf("Should not return an entity, next new entity should be id:4")
 	}
 
-	productNew := Product{0, ProductDescription{"product4", 11.22}}
+	productNew := &Product{0, ProductDescription{"product4", 11.22}}
 	err = storm.Save(productNew)
 
 	if nil != err {
 		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
 	}
 
-	entity, _ = storm.Get("product", 4)
-
-	if entity == nil {
-		t.Fatalf("Enity not saved, database returned no result")
+	if productNew.Id != 4 {
+		t.Errorf("Expected to have the pk id updated, expected a %v but got %v", 4, productNew.Id)
 	}
 
-	product, _ := entity.(*Product)
-	if product.Id != 4 || product.Name != "product4" || product.Price != 11.22 {
-		t.Errorf("Entity expected data after update mismatch, expected a %v but got %v", Product{4, ProductDescription{"product4", 11.22}}, product)
-	}
-}
-
-func TestStorm_SaveNewEntityWithPointer(t *testing.T) {
-
-	storm := newTestStorm()
-	entity, err := storm.Get("product", 4)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
-	}
-
-	if entity != nil {
-		t.Fatalf("Should not return an entity, next new entity should be id:4")
-	}
-
-	productNew := Product{0, ProductDescription{"product4", 11.22}}
-	err = storm.Save(&productNew)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
-	}
-
+	//check if in db
 	entity, _ = storm.Get("product", 4)
 
 	if entity == nil {
@@ -255,7 +228,7 @@ func TestStorm_SaveExistingEntity(t *testing.T) {
 
 	product.Name = "product1updated"
 	product.Price = 11.33
-	err = storm.Save(*product)
+	err = storm.Save(product)
 
 	if nil != err {
 		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
@@ -269,39 +242,19 @@ func TestStorm_SaveExistingEntity(t *testing.T) {
 	}
 }
 
-func TestStorm_SaveExistingEntityPointer(t *testing.T) {
+func TestStorm_SaveEntityWithoutUsingPointerError(t *testing.T) {
+
 	storm := newTestStorm()
-	entity, err := storm.Get("product", 1)
 
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	productNew := Product{0, ProductDescription{"product4", 11.22}}
+	err := storm.Save(productNew)
+
+	if nil == err {
+		t.Fatalf("Expected to get a error but no error given")
 	}
 
-	if entity == nil {
-		t.Fatalf("Returned an empty entity")
-	}
-
-	product, ok := entity.(*Product)
-	if !ok {
-		t.Fatalf("Conversion of returned entity failed to *Product")
-	}
-
-	if product.Id != 1 || product.Name != "product1" || product.Price != 12.01 {
-		t.Errorf("Entity start data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, product)
-	}
-
-	product.Name = "product1updated"
-	product.Price = 11.33
-	err = storm.Save(product)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
-	}
-
-	entity, _ = storm.Get("product", 1)
-	product, _ = entity.(*Product)
-
-	if product.Id != 1 || product.Name != "product1updated" || product.Price != 11.33 {
-		t.Errorf("Entity expected data after update mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1updated", 11.33}}, product)
+	expectedError := "storm: passed structure is not a pointer: {0 {product4 11.22}} (kind=struct)"
+	if err.Error() != expectedError {
+		t.Errorf("Expected to get a error with the message \"%s\", but got message: \"%s\"", expectedError, err)
 	}
 }

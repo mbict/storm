@@ -43,7 +43,7 @@ func newTestStorm() *Storm {
 }
 
 func newTestRepository() *Repository {
-	repo := NewRepository(&Dialect{})
+	repo := NewRepository(newTestDialect())
 
 	//default test objects
 	repo.AddStructure(Customer{}, "customer")
@@ -78,4 +78,8 @@ func newTestDb() *sql.DB {
 	//db.Close()
 
 	return db
+}
+
+func newTestDialect() Dialect {
+	return &SqliteDialect{}
 }

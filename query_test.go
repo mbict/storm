@@ -1,8 +1,8 @@
 package storm
 
 import (
+	"fmt"
 	"testing"
-	//"bytes"
 )
 
 func TestQuery_generateSelect(t *testing.T) {
@@ -120,9 +120,62 @@ func TestQuery_generateDelete(t *testing.T) {
 }
 
 func TestQuery_Exec(t *testing.T) {
-	t.Fatalf("Not implemented")
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	result, err := q.Exec()
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result == nil {
+		t.Fatalf("Expected a result slice but got nil")
+	}
+
+	count := len(result)
+	if count != 3 {
+		t.Errorf("Expected to get \"%d\" rows but got  \"%d\" rows", 3, count)
+	}
+
+	//with one where
+	q.Where("id > ?", 1)
+	result, err = q.Exec()
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result == nil {
+		t.Fatalf("Expected a result slice but got nil")
+	}
+
+	count = len(result)
+	if count != 2 {
+		t.Errorf("Expected to get \"%d\" rows but got  \"%d\" rows", 2, count)
+	}
 }
 
 func TestQuery_Count(t *testing.T) {
-	t.Fatalf("Not implemented")
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	count, err := q.Count()
+
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if count != 3 {
+		t.Errorf("Expected to get \"%d\" rows but got  \"%d\"", 3, count)
+	}
+
+	//with one where
+	q.Where("id > ?", 1)
+	count, err = q.Count()
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Expected to get \"%d\" rows but got  \"%d\"", 2, count)
+	}
 }

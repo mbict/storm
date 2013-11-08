@@ -98,10 +98,12 @@ func (a *Storm) Save(entity interface{}) error {
 
 	v := reflect.ValueOf(entity)
 
-	//if its a pointer we try to get the structure
-	if v.Type().Kind() == reflect.Ptr {
-		v = v.Elem()
+	//check if the passed item is a pointer
+	if v.Type().Kind() != reflect.Ptr {
+		return errors.New(fmt.Sprintf("storm: passed structure is not a pointer: %v (kind=%v)", entity, v.Kind()))
 	}
+
+	v = v.Elem()
 
 	tblMap := a.repository.tableMapByType(v.Type())
 	if tblMap == nil {
@@ -129,11 +131,13 @@ func (a *Storm) Save(entity interface{}) error {
 	}
 
 	//update if pk is non zero
+	var getLastInsertId bool = false
 	var sql string
 	var bind []interface{}
 	pkValue := v.FieldByIndex(tblMap.keys[0].goIndex).Interface()
 	if pkValue == 0 {
 		//insert
+		getLastInsertId = true
 		sql = q.generateInsertSQL()
 	} else {
 		//update
@@ -150,9 +154,24 @@ func (a *Storm) Save(entity interface{}) error {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(bind...)
-	if err != nil {
-		return err
+	//get the pk if this was a insert
+	if getLastInsertId == true {
+		id, err := a.repository.dialect.InsertAutoIncrement(stmt, bind...)
+		if err != nil {
+			return err
+		}
+
+		if v.FieldByIndex(tblMap.keys[0].goIndex).CanSet() {
+			v.FieldByIndex(tblMap.keys[0].goIndex).SetInt(id)
+		} else {
+
+		}
+	} else {
+		_, err = stmt.Exec(bind...)
+		if err != nil {
+			return err
+		}
+
 	}
 
 	return nil
