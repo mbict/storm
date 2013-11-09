@@ -1,7 +1,6 @@
 package storm
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -178,4 +177,104 @@ func TestQuery_Count(t *testing.T) {
 	if count != 2 {
 		t.Errorf("Expected to get \"%d\" rows but got  \"%d\"", 2, count)
 	}
+}
+
+func TestQuery_ExecInto(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	//fetch all with normal typed slice
+	var result1 []Product
+	err := q.ExecInto(&result1)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result1 == nil {
+		t.Fatalf("Expected a result slice but got nil")
+	}
+
+	count := len(result1)
+	if count != 3 {
+		t.Fatalf("Expected to get \"%d\" rows but got  \"%d\" rows", 3, count)
+	}
+
+	if result1[0].Id != 1 || result1[0].Name != "product1" || result1[0].Price != 12.01 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, result1[0])
+	}
+
+	if result1[1].Id != 2 || result1[1].Name != "product2" || result1[1].Price != 12.02 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02}}, result1[1])
+	}
+
+	if result1[2].Id != 3 || result1[2].Name != "product3" || result1[2].Price != 12.03 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{3, ProductDescription{"product3", 12.03}}, result1[2])
+	}
+
+	//with one where and pointer slice
+	q.Where("id > ?", 1)
+	var result2 []*Product
+	err = q.ExecInto(&result2)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result2 == nil {
+		t.Fatalf("Expected a result slice but got nil")
+	}
+
+	count = len(result2)
+	if count != 2 {
+		t.Fatalf("Expected to get \"%d\" rows but got  \"%d\" rows", 2, count)
+	}
+
+	if result2[0].Id != 2 || result2[0].Name != "product2" || result2[0].Price != 12.02 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02}}, result2[0])
+	}
+
+	if result2[1].Id != 3 || result2[1].Name != "product3" || result2[1].Price != 12.03 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{3, ProductDescription{"product3", 12.03}}, result2[1])
+	}
+
+}
+
+func TestQuery_ExecIntoErrors(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	//no slice input error
+	var val int = 1245
+	err := q.ExecInto(&val)
+	if nil == err {
+		t.Fatalf("Expected to get a error but no error given")
+	}
+
+	expectedError := "storm: passed value is not a slice type but a int"
+	if err.Error() != expectedError {
+		t.Errorf("Expected to get a error with the message \"%s\", but got message: \"%s\"", expectedError, err)
+	}
+
+	var sliceNoPointer []int
+	err = q.ExecInto(sliceNoPointer)
+	if nil == err {
+		t.Fatalf("Expected to get a error but no error given")
+	}
+
+	expectedError = "storm: passed value is not of a pointer type but slice"
+	if err.Error() != expectedError {
+		t.Errorf("Expected to get a error with the message \"%s\", but got message: \"%s\"", expectedError, err)
+	}
+
+	//no  mismatch type slice
+	var sliceMismatch []Customer
+	err = q.ExecInto(&sliceMismatch)
+	if nil == err {
+		t.Fatalf("Expected to get a error but no error given")
+	}
+
+	expectedError = "storm: passed slice type is not of the type storm.Product where this query is based upon but its a storm.Customer"
+	if err.Error() != expectedError {
+		t.Errorf("Expected to get a error with the message \"%s\", but got message: \"%s\"", expectedError, err)
+	}
+
 }

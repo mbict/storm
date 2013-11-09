@@ -1,8 +1,8 @@
 package storm
 
 import (
-	//"errors"
 	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
 	//"database/sql"
@@ -79,6 +79,71 @@ func (q *Query) Order(column string, direction SortDirection) *Query {
 func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
 	q.where[condition] = bindAttr
 	return q
+}
+
+//execute a select into a slice structure
+func (q *Query) ExecInto(i interface{}) error {
+
+	t := reflect.TypeOf(i)
+
+	if t.Kind() != reflect.Ptr {
+		return errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
+	}
+
+	if t.Elem().Kind() != reflect.Slice {
+		return errors.New(fmt.Sprintf("storm: passed value is not a slice type but a %v", t.Elem().Kind()))
+	}
+
+	var destIsPointer bool = false
+	if t.Elem().Elem().Kind() == reflect.Ptr {
+		destIsPointer = true
+
+		if t.Elem().Elem().Elem() != q.tblMap.goType {
+			return errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem().Elem()))
+		}
+	} else if t.Elem().Elem() != q.tblMap.goType {
+		return errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
+	}
+
+	sql, bind := q.generateSelectSQL()
+	stmt, err := q.storm.db.Prepare(sql)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(bind...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	vSlice := reflect.ValueOf(i).Elem()
+	for {
+		if !rows.Next() {
+			// if error occured return rawselect
+			if rows.Err() != nil {
+				return rows.Err()
+			}
+			return nil
+		}
+
+		v := reflect.New(q.tblMap.goType)
+		dest := make([]interface{}, len(q.tblMap.columns))
+		for key, col := range q.tblMap.columns {
+			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
+		}
+		err = rows.Scan(dest...)
+		if err != nil {
+			return err
+		}
+
+		if false == destIsPointer {
+			vSlice.Set(reflect.Append(vSlice, v.Elem()))
+		} else {
+			vSlice.Set(reflect.Append(vSlice, v))
+		}
+	}
 }
 
 //execute a select
