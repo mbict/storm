@@ -118,41 +118,6 @@ func TestQuery_generateDelete(t *testing.T) {
 	}
 }
 
-func TestQuery_Exec(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("product"), storm)
-
-	result, err := q.Exec()
-	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
-	}
-
-	if result == nil {
-		t.Fatalf("Expected a result slice but got nil")
-	}
-
-	count := len(result)
-	if count != 3 {
-		t.Errorf("Expected to get \"%d\" rows but got  \"%d\" rows", 3, count)
-	}
-
-	//with one where
-	q.Where("id > ?", 1)
-	result, err = q.Exec()
-	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
-	}
-
-	if result == nil {
-		t.Fatalf("Expected a result slice but got nil")
-	}
-
-	count = len(result)
-	if count != 2 {
-		t.Errorf("Expected to get \"%d\" rows but got  \"%d\" rows", 2, count)
-	}
-}
-
 func TestQuery_Count(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
@@ -179,13 +144,40 @@ func TestQuery_Count(t *testing.T) {
 	}
 }
 
-func TestQuery_ExecInto(t *testing.T) {
+func TestQuery_Exec(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 
+	//fetch all with out slice
+	result, err := q.Exec(nil)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result == nil {
+		t.Fatalf("Expected a result slice but got nil")
+	}
+
+	count := len(result)
+	if count != 3 {
+		t.Fatalf("Expected to get \"%d\" rows but got  \"%d\" rows", 3, count)
+	}
+
+	if product, ok := result[0].(*Product); !ok || product.Id != 1 || product.Name != "product1" || product.Price != 12.01 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, product)
+	}
+
+	if product, ok := result[1].(*Product); !ok || product.Id != 2 || product.Name != "product2" || product.Price != 12.02 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02}}, product)
+	}
+
+	if product, ok := result[2].(*Product); !ok || product.Id != 3 || product.Name != "product3" || product.Price != 12.03 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{3, ProductDescription{"product3", 12.03}}, product)
+	}
+
 	//fetch all with normal typed slice
 	var result1 []Product
-	err := q.ExecInto(&result1)
+	result, err = q.Exec(&result1)
 	if err != nil {
 		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
 	}
@@ -194,7 +186,12 @@ func TestQuery_ExecInto(t *testing.T) {
 		t.Fatalf("Expected a result slice but got nil")
 	}
 
-	count := len(result1)
+	//we provided a interface so result should be nil
+	if result != nil {
+		t.Fatalf("Expected the return i[]interface{} should be nil")
+	}
+
+	count = len(result1)
 	if count != 3 {
 		t.Fatalf("Expected to get \"%d\" rows but got  \"%d\" rows", 3, count)
 	}
@@ -214,7 +211,7 @@ func TestQuery_ExecInto(t *testing.T) {
 	//with one where and pointer slice
 	q.Where("id > ?", 1)
 	var result2 []*Product
-	err = q.ExecInto(&result2)
+	result, err = q.Exec(&result2)
 	if err != nil {
 		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
 	}
@@ -235,16 +232,15 @@ func TestQuery_ExecInto(t *testing.T) {
 	if result2[1].Id != 3 || result2[1].Name != "product3" || result2[1].Price != 12.03 {
 		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{3, ProductDescription{"product3", 12.03}}, result2[1])
 	}
-
 }
 
-func TestQuery_ExecIntoErrors(t *testing.T) {
+func TestQuery_ExecErrors(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 
 	//no slice input error
 	var val int = 1245
-	err := q.ExecInto(&val)
+	_, err := q.Exec(&val)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}
@@ -255,7 +251,7 @@ func TestQuery_ExecIntoErrors(t *testing.T) {
 	}
 
 	var sliceNoPointer []int
-	err = q.ExecInto(sliceNoPointer)
+	_, err = q.Exec(sliceNoPointer)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}
@@ -267,7 +263,7 @@ func TestQuery_ExecIntoErrors(t *testing.T) {
 
 	//no  mismatch type slice
 	var sliceMismatch []Customer
-	err = q.ExecInto(&sliceMismatch)
+	_, err = q.Exec(&sliceMismatch)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}

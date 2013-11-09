@@ -82,72 +82,30 @@ func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
 }
 
 //execute a select into a slice structure
-func (q *Query) ExecInto(i interface{}) error {
-
-	t := reflect.TypeOf(i)
-
-	if t.Kind() != reflect.Ptr {
-		return errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
-	}
-
-	if t.Elem().Kind() != reflect.Slice {
-		return errors.New(fmt.Sprintf("storm: passed value is not a slice type but a %v", t.Elem().Kind()))
-	}
+func (q *Query) Exec(i interface{}) ([]interface{}, error) {
 
 	var destIsPointer bool = false
-	if t.Elem().Elem().Kind() == reflect.Ptr {
-		destIsPointer = true
+	if i != nil {
+		t := reflect.TypeOf(i)
 
-		if t.Elem().Elem().Elem() != q.tblMap.goType {
-			return errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem().Elem()))
+		if t.Kind() != reflect.Ptr {
+			return nil, errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
 		}
-	} else if t.Elem().Elem() != q.tblMap.goType {
-		return errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
-	}
 
-	sql, bind := q.generateSelectSQL()
-	stmt, err := q.storm.db.Prepare(sql)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
+		if t.Elem().Kind() != reflect.Slice {
+			return nil, errors.New(fmt.Sprintf("storm: passed value is not a slice type but a %v", t.Elem().Kind()))
+		}
 
-	rows, err := stmt.Query(bind...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
+		if t.Elem().Elem().Kind() == reflect.Ptr {
+			destIsPointer = true
 
-	vSlice := reflect.ValueOf(i).Elem()
-	for {
-		if !rows.Next() {
-			// if error occured return rawselect
-			if rows.Err() != nil {
-				return rows.Err()
+			if t.Elem().Elem().Elem() != q.tblMap.goType {
+				return nil, errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem().Elem()))
 			}
-			return nil
-		}
-
-		v := reflect.New(q.tblMap.goType)
-		dest := make([]interface{}, len(q.tblMap.columns))
-		for key, col := range q.tblMap.columns {
-			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
-		}
-		err = rows.Scan(dest...)
-		if err != nil {
-			return err
-		}
-
-		if false == destIsPointer {
-			vSlice.Set(reflect.Append(vSlice, v.Elem()))
-		} else {
-			vSlice.Set(reflect.Append(vSlice, v))
+		} else if t.Elem().Elem() != q.tblMap.goType {
+			return nil, errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
 		}
 	}
-}
-
-//execute a select
-func (q *Query) Exec() ([]interface{}, error) {
 
 	sql, bind := q.generateSelectSQL()
 	stmt, err := q.storm.db.Prepare(sql)
@@ -162,7 +120,13 @@ func (q *Query) Exec() ([]interface{}, error) {
 	}
 	defer rows.Close()
 
-	var data []interface{}
+	var vSlice reflect.Value
+	var list []interface{} = nil
+	if i != nil {
+		vSlice = reflect.ValueOf(i).Elem()
+	} else {
+		list = make([]interface{}, 0)
+	}
 
 	for {
 		if !rows.Next() {
@@ -170,7 +134,8 @@ func (q *Query) Exec() ([]interface{}, error) {
 			if rows.Err() != nil {
 				return nil, rows.Err()
 			}
-			return data, nil
+
+			return list, nil
 		}
 
 		v := reflect.New(q.tblMap.goType)
@@ -183,30 +148,16 @@ func (q *Query) Exec() ([]interface{}, error) {
 			return nil, err
 		}
 
-		data = append(data, v.Interface())
-	}
-
-	/*
-		//create a new structure
-
-
-		//get the columns in the structure
-		scanFields := make([]interface{}, len(q.tblMap.columns))
-		for key, col := range q.tblMap.columns {
-			scanFields[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
-		}
-
-		//scan the row into the struct
-		err = row.Scan(scanFields...)
-		if err != nil {
-			if "sql: no rows in result set" == err.Error() {
-				//no row found we return nil
-				return nil, nil
+		if i == nil { //append to the list
+			list = append(list, v.Interface())
+		} else {
+			if false == destIsPointer {
+				vSlice.Set(reflect.Append(vSlice, v.Elem()))
+			} else {
+				vSlice.Set(reflect.Append(vSlice, v))
 			}
-			return nil, errors.New("Error while scanning result '" + err.Error() + "'")
 		}
-	*/
-	//return v.Interface(), nil
+	}
 }
 
 //execute a count
