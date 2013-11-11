@@ -160,6 +160,11 @@ func (q *Query) Select(i interface{}) ([]interface{}, error) {
 	}
 }
 
+//
+func (q *Query) SelectRow(i interface{}) (interface{}, error) {
+	return nil, nil
+}
+
 //Selectute a count
 func (q *Query) Count() (int64, error) {
 
