@@ -42,82 +42,6 @@ func TestQuery_generateSelectWhereOffsetLimitOrder(t *testing.T) {
 	}
 }
 
-func TestQuery_generateInsert(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("product"), storm)
-	q.Column("name")
-
-	sql := q.generateInsertSQL()
-
-	sqlExpected := "INSERT INTO `product`(`name`) VALUES (?)"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
-func TestQuery_generateInsertAutoColumns(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("product"), storm)
-
-	sql := q.generateInsertSQL()
-
-	sqlExpected := "INSERT INTO `product`(`name`, `price`) VALUES (?, ?)"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
-func TestQuery_generateUpdate(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("product"), storm)
-	q.Column("name").Where("id = ?", 1)
-
-	sql, bind := q.generateUpdateSQL()
-
-	if len(bind) != 1 {
-		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
-	}
-
-	sqlExpected := "UPDATE `product` SET `name` = ? WHERE id = ?"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
-func TestQuery_generateUpdateAutoColumns(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("product"), storm)
-	q.Where("id = ?", 1)
-
-	sql, bind := q.generateUpdateSQL()
-	if len(bind) != 1 {
-		t.Errorf("Expected to get 1 column back to bind but got %v columns back", len(bind))
-	}
-
-	sqlExpected := "UPDATE `product` SET `name` = ?, `price` = ? WHERE id = ?"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
-func TestQuery_generateDelete(t *testing.T) {
-	storm := newTestStorm()
-	q := NewQuery(storm.repository.getTableMap("customer"), storm)
-	q.Where("id = ?", 1).
-		Where("name = ?", "test")
-
-	sql, bind := q.generateDeleteSQL()
-
-	if len(bind) != 2 {
-		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))
-	}
-
-	sqlExpected := "DELETE FROM `customer` WHERE id = ? AND name = ?"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
 func TestQuery_Count(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
@@ -144,12 +68,12 @@ func TestQuery_Count(t *testing.T) {
 	}
 }
 
-func TestQuery_Exec(t *testing.T) {
+func TestQuery_Select(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 
 	//fetch all with out slice
-	result, err := q.Exec(nil)
+	result, err := q.Select(nil)
 	if err != nil {
 		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
 	}
@@ -177,7 +101,7 @@ func TestQuery_Exec(t *testing.T) {
 
 	//fetch all with normal typed slice
 	var result1 []Product
-	result, err = q.Exec(&result1)
+	result, err = q.Select(&result1)
 	if err != nil {
 		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
 	}
@@ -211,7 +135,7 @@ func TestQuery_Exec(t *testing.T) {
 	//with one where and pointer slice
 	q.Where("id > ?", 1)
 	var result2 []*Product
-	result, err = q.Exec(&result2)
+	result, err = q.Select(&result2)
 	if err != nil {
 		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
 	}
@@ -234,13 +158,13 @@ func TestQuery_Exec(t *testing.T) {
 	}
 }
 
-func TestQuery_ExecErrors(t *testing.T) {
+func TestQuery_SelectErrors(t *testing.T) {
 	storm := newTestStorm()
 	q := NewQuery(storm.repository.getTableMap("product"), storm)
 
 	//no slice input error
 	var val int = 1245
-	_, err := q.Exec(&val)
+	_, err := q.Select(&val)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}
@@ -251,7 +175,7 @@ func TestQuery_ExecErrors(t *testing.T) {
 	}
 
 	var sliceNoPointer []int
-	_, err = q.Exec(sliceNoPointer)
+	_, err = q.Select(sliceNoPointer)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}
@@ -263,7 +187,7 @@ func TestQuery_ExecErrors(t *testing.T) {
 
 	//no  mismatch type slice
 	var sliceMismatch []Customer
-	_, err = q.Exec(&sliceMismatch)
+	_, err = q.Select(&sliceMismatch)
 	if nil == err {
 		t.Fatalf("Expected to get a error but no error given")
 	}

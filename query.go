@@ -21,8 +21,8 @@ type QueryInterface interface {
 	Where(condition string, bindAttr ...interface{}) *QueryInterface
 	Limit(limit int) *QueryInterface
 	Offset(offset int) *QueryInterface
-	Exec() ([]interface{}, error)
-	Count() (int, error)
+	Select(i interface{}) ([]interface{}, error)
+	Count() (int64, error)
 }
 
 type Query struct {
@@ -81,8 +81,8 @@ func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
 	return q
 }
 
-//execute a select into a slice structure
-func (q *Query) Exec(i interface{}) ([]interface{}, error) {
+//Selectute a select into a slice structure
+func (q *Query) Select(i interface{}) ([]interface{}, error) {
 
 	var destIsPointer bool = false
 	if i != nil {
@@ -160,8 +160,8 @@ func (q *Query) Exec(i interface{}) ([]interface{}, error) {
 	}
 }
 
-//execute a count
-func (q *Query) Count() (int, error) {
+//Selectute a count
+func (q *Query) Count() (int64, error) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
@@ -192,7 +192,7 @@ func (q *Query) Count() (int, error) {
 		return 0, err
 	}
 
-	var count int
+	var count int64
 	row := stmt.QueryRow(bindVars...)
 	err = row.Scan(&count)
 	if err != nil {
@@ -273,121 +273,6 @@ func (q *Query) generateSelectSQL() (string, []interface{}) {
 	//add offset
 	if q.offset > 0 {
 		sql.WriteString(fmt.Sprintf(" OFFSET %d", q.offset))
-	}
-
-	return sql.String(), bindVars
-}
-
-func (q *Query) generateDeleteSQL() (string, []interface{}) {
-
-	var bindVars []interface{}
-	var sql bytes.Buffer
-	var pos int
-
-	sql.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", q.tblMap.Name))
-
-	//bindPks := make([]interface{}, len(q.tblMap.keys))
-	pos = 0
-	for cond, attr := range q.where {
-		if pos > 0 {
-			sql.WriteString(" AND ")
-		}
-		sql.WriteString(cond)
-
-		bindVars = append(bindVars, attr...)
-		pos++
-	}
-
-	//add limit
-	//#define SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-	/*if q.limit > 0 {
-		sql.WriteString(fmt.Sprintf(" LIMIT %d", q.limit))
-	}*/
-
-	return sql.String(), bindVars
-}
-
-func (q *Query) generateInsertSQL() string {
-	var sql bytes.Buffer
-	var sqlValues bytes.Buffer
-	var pos int
-
-	sql.WriteString(fmt.Sprintf("INSERT INTO `%s`(", q.tblMap.Name))
-
-	if len(q.columns) > 0 {
-		for _, col := range q.columns {
-			if pos > 0 {
-				sql.WriteString(", ")
-				sqlValues.WriteString(", ")
-			}
-
-			sqlValues.WriteString("?")
-			sql.WriteString(fmt.Sprintf("`%s`", col))
-			pos++
-		}
-	} else {
-		for _, col := range q.tblMap.columns {
-			for _, pk := range q.tblMap.keys {
-				if col != pk {
-					if pos > 0 {
-						sql.WriteString(", ")
-						sqlValues.WriteString(", ")
-					}
-
-					sqlValues.WriteString("?")
-					sql.WriteString(fmt.Sprintf("`%s`", col.Name))
-					pos++
-				}
-			}
-		}
-	}
-	sql.WriteString(fmt.Sprintf(") VALUES (%s)", sqlValues.String()))
-
-	return sql.String()
-}
-
-func (q *Query) generateUpdateSQL() (string, []interface{}) {
-
-	var bindVars []interface{}
-	var sql bytes.Buffer
-	var pos int
-
-	sql.WriteString(fmt.Sprintf("UPDATE `%s` SET ", q.tblMap.Name))
-
-	if len(q.columns) > 0 {
-		for _, col := range q.columns {
-			if pos > 0 {
-				sql.WriteString(", ")
-			}
-
-			sql.WriteString(fmt.Sprintf("`%s` = ?", col))
-			pos++
-		}
-	} else {
-		for _, col := range q.tblMap.columns {
-			for _, pk := range q.tblMap.keys {
-				if col != pk {
-					if pos > 0 {
-						sql.WriteString(", ")
-					}
-
-					sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
-					pos++
-				}
-			}
-		}
-	}
-
-	sql.WriteString(" WHERE ")
-	pos = 0
-	for cond, attr := range q.where {
-		if pos > 0 {
-			sql.WriteString(" AND ")
-		}
-		sql.WriteString(cond)
-
-		bindVars = append(bindVars, attr...)
-		pos++
 	}
 
 	return sql.String(), bindVars

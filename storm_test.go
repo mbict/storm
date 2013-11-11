@@ -1,6 +1,7 @@
 package storm
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -111,6 +112,23 @@ func TestStorm_GetNotEnoughAttributesProvided(t *testing.T) {
 	}
 }
 
+func TestStorm_generateDeleteSql(t *testing.T) {
+	storm := newTestStorm()
+	entity := Customer{1, "customer1"}
+	v := reflect.ValueOf(entity)
+	tblMap := storm.repository.getTableMap("customer")
+	sql, bind := storm.generateDeleteSQL(v, tblMap)
+
+	if len(bind) != 1 {
+		t.Errorf("Expected to get 1 columns to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "DELETE FROM `customer` WHERE `id` = ?"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
 func TestStorm_Delete(t *testing.T) {
 
 	storm := newTestStorm()
@@ -165,6 +183,40 @@ func TestStorm_DeleteNoPKDefined(t *testing.T) {
 	expectedError := "No primary key defined"
 	if err.Error() != expectedError {
 		t.Errorf("Expected to get a error with the message \"%v\", but got message: \"%v\"", expectedError, err)
+	}
+}
+
+func TestQuery_generateInsertSQL(t *testing.T) {
+	storm := newTestStorm()
+	entity := Customer{0, "customer1"}
+	v := reflect.ValueOf(entity)
+	tblMap := storm.repository.getTableMap("customer")
+	sql, bind := storm.generateInsertSQL(v, tblMap)
+
+	if len(bind) != 1 {
+		t.Errorf("Expected to get 1 columns to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "INSERT INTO `customer`(`name`) VALUES (?)"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
+func TestQuery_generateUpdateSQL(t *testing.T) {
+	storm := newTestStorm()
+	entity := Customer{1, "customer1"}
+	v := reflect.ValueOf(entity)
+	tblMap := storm.repository.getTableMap("customer")
+	sql, bind := storm.generateUpdateSQL(v, tblMap)
+
+	if len(bind) != 2 {
+		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "UPDATE `customer` SET `name` = ? WHERE `id` = ?"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
 	}
 }
 

@@ -1,6 +1,7 @@
 package storm
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -22,28 +23,28 @@ type Storm struct {
 //https://github.com/jinzhu/gorm/blob/master/main.go
 
 func NewStorm(db *sql.DB, repository *Repository) *Storm {
-	a := Storm{}
-	a.repository = repository
-	a.db = db
+	s := Storm{}
+	s.repository = repository
+	s.db = db
 
-	return &a
+	return &s
 }
 
 //get a query stack for an entity
-func (a *Storm) Query(entityName string) (*Query, error) {
+func (s *Storm) Query(entityName string) (*Query, error) {
 
-	tblMap := a.repository.getTableMap(entityName)
+	tblMap := s.repository.getTableMap(entityName)
 	if tblMap == nil {
 		return nil, errors.New("No entity with the name '" + entityName + "' found")
 	}
 
-	return NewQuery(tblMap, a), nil
+	return NewQuery(tblMap, s), nil
 }
 
 //get a single entity from the datastore
-func (a *Storm) Get(entityName string, keys ...interface{}) (interface{}, error) {
+func (s *Storm) Get(entityName string, keys ...interface{}) (interface{}, error) {
 
-	q, err := a.Query(entityName)
+	q, err := s.Query(entityName)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (a *Storm) Get(entityName string, keys ...interface{}) (interface{}, error)
 	}
 
 	sql, bind := q.generateSelectSQL()
-	stmt, err := a.db.Prepare(sql)
+	stmt, err := s.db.Prepare(sql)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func (a *Storm) Get(entityName string, keys ...interface{}) (interface{}, error)
 }
 
 //update a entity
-func (a *Storm) Save(entity interface{}) error {
+func (s *Storm) Save(entity interface{}) error {
 
 	v := reflect.ValueOf(entity)
 
@@ -104,8 +105,7 @@ func (a *Storm) Save(entity interface{}) error {
 	}
 
 	v = v.Elem()
-
-	tblMap := a.repository.tableMapByType(v.Type())
+	tblMap := s.repository.tableMapByType(v.Type())
 	if tblMap == nil {
 		return errors.New("No structure registered in repository of type '" + v.Type().String() + "'")
 	}
@@ -117,38 +117,24 @@ func (a *Storm) Save(entity interface{}) error {
 		return errors.New("Entities with more than 1 pk currently not suppported")
 	}
 
-	//create query
-	q := NewQuery(tblMap, a)
-
-	//add the columns
-	var bindValues []interface{}
-	for _, col := range q.tblMap.columns {
-		//ignore pk
-		if tblMap.keys[0] != col {
-			q.Column(col.Name)
-			bindValues = append(bindValues, v.FieldByIndex(col.goIndex).Interface())
-		}
-	}
-
 	//update if pk is non zero
-	var getLastInsertId bool = false
-	var sql string
-	var bind []interface{}
-	pkValue := v.FieldByIndex(tblMap.keys[0].goIndex).Interface()
+	var (
+		getLastInsertId bool = false
+		sql             string
+		bind            []interface{}
+		pkValue         int64 = v.FieldByIndex(tblMap.keys[0].goIndex).Int()
+	)
+
 	if pkValue == 0 {
 		//insert
 		getLastInsertId = true
-		sql = q.generateInsertSQL()
+		sql, bind = s.generateInsertSQL(v, tblMap)
 	} else {
 		//update
-
-		//add pk where
-		q.Where(fmt.Sprintf("%v = ?", tblMap.keys[0].Name), pkValue)
-		sql, bind = q.generateUpdateSQL()
+		sql, bind = s.generateUpdateSQL(v, tblMap)
 	}
 
-	bind = append(bindValues, bind...)
-	stmt, err := a.db.Prepare(sql)
+	stmt, err := s.db.Prepare(sql)
 	if err != nil {
 		return err
 	}
@@ -156,7 +142,7 @@ func (a *Storm) Save(entity interface{}) error {
 
 	//get the pk if this was a insert
 	if getLastInsertId == true {
-		id, err := a.repository.dialect.InsertAutoIncrement(stmt, bind...)
+		id, err := s.repository.dialect.InsertAutoIncrement(stmt, bind...)
 		if err != nil {
 			return err
 		}
@@ -171,17 +157,16 @@ func (a *Storm) Save(entity interface{}) error {
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
 }
 
 //delete a entity
-func (a *Storm) Delete(entity interface{}) error {
+func (s *Storm) Delete(entity interface{}) error {
 
 	v := reflect.ValueOf(entity)
-	tblMap := a.repository.tableMapByType(v.Type())
+	tblMap := s.repository.tableMapByType(v.Type())
 
 	if tblMap == nil {
 		return errors.New("No structure registered in repository of type '" + v.Type().String() + "'")
@@ -191,16 +176,9 @@ func (a *Storm) Delete(entity interface{}) error {
 		return errors.New("No primary key defined")
 	}
 
-	//create query
-	q := NewQuery(tblMap, a)
-
-	//set the where
-	for _, col := range q.tblMap.keys {
-		q.Where(fmt.Sprintf("`%v` = ?", col.Name), v.FieldByIndex(col.goIndex).Interface())
-	}
-
-	sql, bind := q.generateDeleteSQL()
-	stmt, err := a.db.Prepare(sql)
+	//execute
+	sql, bind := s.generateDeleteSQL(v, tblMap)
+	stmt, err := s.db.Prepare(sql)
 	if err != nil {
 		return err
 	}
@@ -212,4 +190,97 @@ func (a *Storm) Delete(entity interface{}) error {
 	}
 
 	return nil
+}
+
+// Generation of insert sql
+// @todo implent dialect
+func (s *Storm) generateInsertSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
+	var (
+		sqlColumns bytes.Buffer
+		sqlValues  bytes.Buffer
+		pos        int = 0
+		bind           = make([]interface{}, 0)
+	)
+
+	for _, col := range tblMap.columns {
+		for _, pk := range tblMap.keys {
+			if col != pk {
+				if pos > 0 {
+					sqlColumns.WriteString(", ")
+					sqlValues.WriteString(", ")
+				}
+
+				sqlColumns.WriteString(fmt.Sprintf("`%s`", col.Name))
+				sqlValues.WriteString("?")
+				bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
+				pos++
+			}
+		}
+	}
+
+	return fmt.Sprintf("INSERT INTO `%s`(%s) VALUES (%s)", tblMap.Name, sqlColumns.String(), sqlValues.String()), bind
+}
+
+// Generate update sql
+// @todo need to implement dialect
+func (s *Storm) generateUpdateSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
+
+	var (
+		sql  bytes.Buffer
+		pos  int = 0
+		bind     = make([]interface{}, 0)
+	)
+
+	sql.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tblMap.Name))
+
+	for _, col := range tblMap.columns {
+		for _, pk := range tblMap.keys {
+			if col != pk {
+				if pos > 0 {
+					sql.WriteString(", ")
+				}
+
+				sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
+				bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
+				pos++
+			}
+		}
+	}
+
+	sql.WriteString(" WHERE ")
+	pos = 0
+	for _, col := range tblMap.keys {
+		if pos > 0 {
+			sql.WriteString(" AND ")
+		}
+		sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
+		bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
+		pos++
+	}
+
+	return sql.String(), bind
+}
+
+// Generation of delete sql
+// @todo need to implement dialect
+func (s *Storm) generateDeleteSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
+
+	var (
+		sql  bytes.Buffer
+		pos  int = 0
+		bind     = make([]interface{}, 0)
+	)
+
+	sql.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tblMap.Name))
+	for _, col := range tblMap.keys {
+		if pos > 0 {
+			sql.WriteString(" AND ")
+		}
+		sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
+
+		bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
+		pos++
+	}
+
+	return sql.String(), bind
 }
