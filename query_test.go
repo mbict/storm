@@ -198,3 +198,79 @@ func TestQuery_SelectErrors(t *testing.T) {
 	}
 
 }
+
+func TestQuery_SelectRow(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+
+	//fetch one without dest entity
+	result, err := q.SelectRow(nil)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result == nil {
+		t.Fatalf("Expected a result but got nil")
+	}
+
+	if product, ok := result.(*Product); !ok || product.Id != 1 || product.Name != "product1" || product.Price != 12.01 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, product)
+	}
+
+	//fetch one with dest entity
+	var result1 Product
+	result, err = q.SelectRow(&result1)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result1.Id == 0 {
+		t.Fatalf("Expected a result but got nil")
+	}
+
+	//we provided a interface so result should be nil
+	if result != nil {
+		t.Fatalf("Expected the return interface{} should be nil")
+	}
+
+	if result1.Id != 1 || result1.Name != "product1" || result1.Price != 12.01 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, result1)
+	}
+
+	//fetch one with where and with dest entity pointer
+	q.Where("id = ?", 2)
+	var result2 *Product
+	result, err = q.SelectRow(&result2)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	//we provided a interface so result should be nil
+	if result != nil {
+		t.Fatalf("Expected the return interface{} should be nil")
+	}
+
+	if result2 == nil {
+		t.Fatalf("Expected a result but got nil")
+	}
+
+	if result2.Id != 2 || result2.Name != "product2" || result2.Price != 12.02 {
+		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02}}, result2)
+	}
+}
+
+func TestQuery_SelectRowNoRowMatch(t *testing.T) {
+	storm := newTestStorm()
+	q := NewQuery(storm.repository.getTableMap("product"), storm)
+	q.Where("id = 0")
+
+	//fetch one without dest entity
+	result, err := q.SelectRow(nil)
+	if err != nil {
+		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	}
+
+	if result != nil {
+		t.Fatalf("Expected a nil result but got a non nil result back")
+	}
+}

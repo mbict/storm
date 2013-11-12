@@ -9,11 +9,6 @@ Usage
 =====
 
 
-****
-```GO
-
-```
-
 **Create a repository and add a structure**
 ```GO
 //example structure

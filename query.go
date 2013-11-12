@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	//"database/sql"
 )
 
 type SortDirection string
@@ -162,10 +161,72 @@ func (q *Query) Select(i interface{}) ([]interface{}, error) {
 
 //
 func (q *Query) SelectRow(i interface{}) (interface{}, error) {
-	return nil, nil
+
+	var destIsPointer bool = false
+	if i != nil {
+		t := reflect.TypeOf(i)
+
+		if t.Kind() != reflect.Ptr {
+			return nil, errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
+		}
+
+		if t.Elem().Kind() == reflect.Ptr {
+			destIsPointer = true
+
+			if t.Elem().Elem() != q.tblMap.goType {
+				return nil, errors.New(fmt.Sprintf("storm: passed type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
+			}
+		} else {
+			if t.Elem() != q.tblMap.goType {
+				return nil, errors.New(fmt.Sprintf("storm: passed type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem()))
+			}
+		}
+	}
+
+	sql, bind := q.generateSelectSQL()
+	stmt, err := q.storm.db.Prepare(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	row := stmt.QueryRow(bind...)
+	var v reflect.Value
+	if i != nil {
+		if false == destIsPointer {
+			v = reflect.ValueOf(i)
+		} else {
+			v = reflect.New(q.tblMap.goType)
+
+			//set the new type into the pointer
+			vPtr := reflect.ValueOf(i)
+			vPtr.Elem().Set(v)
+		}
+	} else {
+		v = reflect.New(q.tblMap.goType)
+	}
+
+	dest := make([]interface{}, len(q.tblMap.columns))
+	for key, col := range q.tblMap.columns {
+		dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
+	}
+	err = row.Scan(dest...)
+	if err != nil {
+		if "sql: no rows in result set" == err.Error() {
+			//no row found we return nil
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if i == nil {
+		return v.Interface(), nil
+	} else {
+		return nil, nil
+	}
 }
 
-//Selectute a count
+//
 func (q *Query) Count() (int64, error) {
 
 	var bindVars []interface{}

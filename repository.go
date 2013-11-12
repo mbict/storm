@@ -20,6 +20,10 @@ func NewRepository(dialect Dialect) *Repository {
 }
 
 //Add a structure to the repository
+// Tags to use in structure `db:"name(altcolumn),pk"`
+// ignore = ignore entire struct
+// pk = primary key
+// name(alternativecolumnname) = alternative column name
 func (r Repository) AddStructure(structure interface{}, name string) (*TableMap, error) {
 
 	t := reflect.TypeOf(structure)

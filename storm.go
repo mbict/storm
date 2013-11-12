@@ -13,15 +13,6 @@ type Storm struct {
 	db         *sql.DB
 }
 
-// Add a structure to the table map
-//
-// structure tags in db
-// ignore = ignore entire struct
-// pk = primary key
-// name(alternativecolumnname) = alternative column name
-
-//https://github.com/jinzhu/gorm/blob/master/main.go
-
 func NewStorm(db *sql.DB, repository *Repository) *Storm {
 	s := Storm{}
 	s.repository = repository
@@ -63,35 +54,16 @@ func (s *Storm) Get(entityName string, keys ...interface{}) (interface{}, error)
 		q.Where(fmt.Sprintf("`%v` = ?", col.Name), keys[key])
 	}
 
-	sql, bind := q.generateSelectSQL()
-	stmt, err := s.db.Prepare(sql)
+	result, err := q.SelectRow(nil)
 	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
 
-	row := stmt.QueryRow(bind...)
-
-	//create a new structure
-	v := reflect.New(q.tblMap.goType)
-
-	//get the columns in the structure
-	scanFields := make([]interface{}, len(q.tblMap.columns))
-	for key, col := range q.tblMap.columns {
-		scanFields[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
-	}
-
-	//scan the row into the struct
-	err = row.Scan(scanFields...)
-	if err != nil {
 		if "sql: no rows in result set" == err.Error() {
 			//no row found we return nil
 			return nil, nil
 		}
-		return nil, errors.New("Error while scanning result '" + err.Error() + "'")
+		return nil, err
 	}
-
-	return v.Interface(), nil
+	return result, nil
 }
 
 //update a entity
@@ -193,7 +165,7 @@ func (s *Storm) Delete(entity interface{}) error {
 }
 
 // Generation of insert sql
-// @todo implent dialect
+// @todo implement dialect
 func (s *Storm) generateInsertSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
 	var (
 		sqlColumns bytes.Buffer
