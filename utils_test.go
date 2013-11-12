@@ -6,9 +6,9 @@ import (
 )
 
 type TestStructureWithTags struct {
-	Id               int    `db:"name(xId),pk", json:"id"`
+	Id               int    `db:"name(xId),pk" json:"id"`
 	Name             string `json:"name"`
-	Hidden           string `db:"ignore", json:"-"`
+	Hidden           string `db:"ignore" json:"-"`
 	localNotExported int
 }
 
@@ -18,7 +18,7 @@ type TestStructure struct {
 }
 
 type Customer struct {
-	Id   int `db:"pk", json:"id"`
+	Id   int `db:"pk" json:"id"`
 	Name string
 }
 

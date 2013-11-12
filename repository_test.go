@@ -63,7 +63,7 @@ func TestRepository_AddStructureDuplicates(t *testing.T) {
 
 	_, err = repo.AddStructure(TestStructure{}, "DuplicateStruct")
 	if nil == err {
-		t.Errorf("Did not returned a error while a duplicate error is expected", err)
+		t.Errorf("Did not returned a error while a duplicate error is expected")
 	}
 
 	if false == strings.Contains(err.Error(), "Duplicate structure, name: ") {
