@@ -37,13 +37,13 @@ type Product struct {
 }
 
 func newTestStorm() *Storm {
-	storm := NewStorm(newTestDb(), newTestRepository())
+	storm := NewStorm(newTestDb(), newTestDialect(), newTestRepository())
 
 	return storm
 }
 
 func newTestRepository() *Repository {
-	repo := NewRepository(newTestDialect())
+	repo := NewRepository()
 
 	//default test objects
 	repo.AddStructure(Customer{}, "customer")

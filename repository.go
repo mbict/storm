@@ -10,14 +10,12 @@ import (
 )
 
 type Repository struct {
-	tables  map[string]*TableMap
-	dialect Dialect
+	tables map[string]*TableMap
 }
 
 //Create a new storm connection
-func NewRepository(dialect Dialect) *Repository {
+func NewRepository() *Repository {
 	r := Repository{}
-	r.dialect = dialect
 	r.tables = make(map[string]*TableMap)
 
 	return &r

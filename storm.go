@@ -15,11 +15,13 @@ import (
 type Storm struct {
 	repository *Repository
 	db         *sql.DB
+	dialect    Dialect
 }
 
-func NewStorm(db *sql.DB, repository *Repository) *Storm {
+func NewStorm(db *sql.DB, dialect Dialect, repository *Repository) *Storm {
 	s := Storm{}
 	s.repository = repository
+	s.dialect = dialect
 	s.db = db
 
 	return &s
@@ -118,7 +120,7 @@ func (s *Storm) Save(entity interface{}) error {
 
 	//get the pk if this was a insert
 	if getLastInsertId == true {
-		id, err := s.repository.dialect.InsertAutoIncrement(stmt, bind...)
+		id, err := s.dialect.InsertAutoIncrement(stmt, bind...)
 		if err != nil {
 			return err
 		}

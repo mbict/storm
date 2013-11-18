@@ -9,7 +9,7 @@ import (
 
 func TestRepository_AddStructure(t *testing.T) {
 
-	repo := NewRepository(newTestDialect())
+	repo := NewRepository()
 	tblMap, err := repo.AddStructure(TestStructureWithTags{}, "TestStructureElement")
 	if nil != err {
 		t.Errorf("Returned a error with message \"%v\" while adding a element", err)
@@ -22,7 +22,7 @@ func TestRepository_AddStructure(t *testing.T) {
 
 func Test_Repository_AddStructureWithPointer(t *testing.T) {
 
-	repo := NewRepository(newTestDialect())
+	repo := NewRepository()
 	tblMap, err := repo.AddStructure(&TestStructureWithTags{}, "TestStructureElement")
 	if nil != err {
 		t.Errorf("Returned a error with message \"%v\" while adding a element", err)
@@ -36,7 +36,7 @@ func Test_Repository_AddStructureWithPointer(t *testing.T) {
 func TestRepository_AddStructureInvalidTypes(t *testing.T) {
 
 	var err error
-	repo := NewRepository(newTestDialect())
+	repo := NewRepository()
 
 	//int type test
 	inInt64 := int64(123)
@@ -54,7 +54,7 @@ func TestRepository_AddStructureInvalidTypes(t *testing.T) {
 func TestRepository_AddStructureDuplicates(t *testing.T) {
 
 	var err error
-	repo := NewRepository(newTestDialect())
+	repo := NewRepository()
 
 	_, err = repo.AddStructure(TestStructure{}, "DuplicateStruct")
 	if nil != err {
