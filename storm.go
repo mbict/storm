@@ -27,6 +27,11 @@ func NewStorm(db *sql.DB, dialect Dialect, repository *Repository) *Storm {
 	return &s
 }
 
+//cleanup and close db connection
+func (s *Storm) Close() error {
+	return s.db.Close()
+}
+
 //get a query stack for an entity
 func (s *Storm) Query(entityName string) (*Query, error) {
 
