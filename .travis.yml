@@ -5,5 +5,7 @@ go:
  - release
  - tip
 
+before_install:
+ - go get github.com/mattn/go-sqlite3
 script:
  - go test -v ./...
