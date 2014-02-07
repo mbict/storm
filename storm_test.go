@@ -1,312 +1,590 @@
-package storm
+package storm2
 
 import (
+	"database/sql"
 	"reflect"
 	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestStorm_Get(t *testing.T) {
+func TestStorm_RegisterStructure(t *testing.T) {
 
-	storm := newTestStorm()
-	entity, err := storm.Get("customer", 1)
+	var (
+		s          *Storm
+		err        error
+		typeStruct = reflect.TypeOf(testStructure{})
+		tbl        *table
+		ok         bool
+	)
 
+	//register by casted nil type
+	s, _ = Open(`sqlite3`, `:memory:`)
+	err = s.RegisterStructure((*testStructure)(nil), `testStructure`)
 	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+		t.Fatalf("Failed with error : %v", err)
 	}
 
-	if entity == nil {
-		t.Fatalf("Returned an empty entity")
+	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
+		t.Fatalf("added table information not found")
 	}
 
-	customer, ok := entity.(*Customer)
-	if !ok {
-		t.Fatalf("Conversion of returned entity failed to *Customer")
-	}
-
-	if customer.Id != 1 || customer.Name != "customer1" {
-		t.Errorf("Entity data mismatch, expected a customer{Id:1, Name:'customer1'}")
-	}
-}
-
-func TestStorm_GetNoResult(t *testing.T) {
-
-	storm := newTestStorm()
-	entity, err := storm.Get("customer", 9999)
-
+	//register by element
+	s, _ = Open(`sqlite3`, `:memory:`)
+	structure := testStructure{}
+	err = s.RegisterStructure(structure, `testStructure`)
 	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+		t.Fatalf("Failed with error : %v", err)
 	}
 
-	if entity != nil {
-		t.Fatalf("Returned an entity while expecting nil")
+	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
+		t.Fatalf("added table information not found")
 	}
-}
 
-func TestStorm_GetWithEmbeddedStruct(t *testing.T) {
-
-	storm := newTestStorm()
-	entity, err := storm.Get("product", 2)
-
+	//register by nil element
+	s, _ = Open(`sqlite3`, `:memory:`)
+	structurePtr := &testStructure{}
+	err = s.RegisterStructure(structurePtr, `testStructure`)
 	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+		t.Fatalf("Failed with error : %v", err)
 	}
 
-	if entity == nil {
-		t.Fatalf("Returned an empty entity")
-	}
-
-	product, ok := entity.(*Product)
-	if !ok {
-		t.Fatalf("Conversion of returned entity failed to *Product")
-	}
-
-	if product.Id != 2 || product.Name != "product2" || product.Price != 12.02 {
-		t.Errorf("Entity data mismatch, expected a %v but got %v", Product{2, ProductDescription{"product2", 12.02}}, product)
+	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
+		t.Fatalf("added table information not found")
 	}
 }
 
-func TestStorm_GetNonExistingEntityError(t *testing.T) {
+func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 
-	storm := newTestStorm()
-	entity, err := storm.Get("notExisting", 1)
+	var (
+		s             *Storm
+		err           error
+		expectedError string = `Provided input is not a structure type`
+	)
 
-	if err == nil {
-		t.Fatalf("Expected to get a error but got no error")
+	s, _ = Open(`sqlite3`, `:memory:`)
+
+	//register by casted nil type
+	err = s.RegisterStructure((*int)(nil), `testStructure`)
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 
-	if err.Error() != "No entity with the name 'notExisting' found" {
-		t.Errorf("Expected to get a error with the message \"No entity with the name 'notExisting' found\", but got message: \"%v\"", err)
+	//register by normal non struct type
+	err = s.RegisterStructure((string)("test"), `testStructure`)
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 
-	if entity != nil {
-		t.Fatalf("No entity should be returned but got something back")
+	//duplicate add error
+	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
+	if err != nil {
+		t.Fatalf("Expected no error , but got `%v`", err)
+	}
+
+	expectedError = "Duplicate structure, 'storm2.testProduct' already exists"
+	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 
 }
 
-func TestStorm_GetNoPKDefined(t *testing.T) {
-	storm := newTestStorm()
-	_, err := storm.Get("productdescription")
+func TestStorm_Find(t *testing.T) {
+	var (
+		err   error
+		input *testStructure = nil
+		s                    = newTestStorm()
+	)
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 
-	if err == nil {
-		t.Fatalf("Expected to get a error but got no error")
+	//empty result, no match
+	if err = s.Find(&input, 999); err != sql.ErrNoRows {
+		t.Fatalf("Got wrong error back, expected `%v` but got `%v`", sql.ErrNoRows, err)
 	}
 
-	expectedError := "No primary key defined"
+	//find by id
+	input = nil
+	if err = s.Find(&input, 1); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+		t.Fatalf("Error: %v",err)
+	}
+
+	//find by string
+	input = nil
+	if err = s.Find(&input, `id = 1`); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+		t.Fatalf("Error: %v",err)
+	}
+
+	//find by query bind string (shorthand for query)
+	input = nil
+	if err = s.Find(&input, `id = ?`, 1); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+		t.Fatalf("Error: %v",err)
+	}
+
+	//find by multiple bind string (shorthand for query)
+	input = nil
+	if err = s.Find(&input, `id = ? AND name = ?`, 1, `name`); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+		t.Fatalf("Error: %v",err)
+	}
+}
+
+func TestStorm_FindWrongInput(t *testing.T) {
+
+	var (
+		err           error
+		expectedError string
+	)
+	s := newTestStorm()
+
+	//not a pointer
+	var input testStructure
+	if err = s.Find(input, 1); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = `Provided structure is not a pointer type`
 	if err.Error() != expectedError {
-		t.Errorf("Expected to get a error with the message \"%v\", but got message: \"%v\"", expectedError, err)
-	}
-}
-
-func TestStorm_GetNotEnoughAttributesProvided(t *testing.T) {
-	storm := newTestStorm()
-	_, err := storm.Get("product")
-
-	if err == nil {
-		t.Fatalf("Expected to get a error but got no error")
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
 
-	expectedError := "Not engough arguments for provided for primary keys, need 1 attributes"
+	//not a structure pointer
+	var inputIntPtr *int
+	if err = s.Find(inputIntPtr, 1); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = `Provided input is not a structure type`
 	if err.Error() != expectedError {
-		t.Errorf("Expected to get a error with the message \"%v\", but got message: \"%v\"", expectedError, err)
-	}
-}
-
-func TestStorm_generateDeleteSql(t *testing.T) {
-	storm := newTestStorm()
-	entity := Customer{1, "customer1"}
-	v := reflect.ValueOf(entity)
-	tblMap := storm.repository.getTableMap("customer")
-	sql, bind := storm.generateDeleteSQL(v, tblMap)
-
-	if len(bind) != 1 {
-		t.Errorf("Expected to get 1 columns to bind but got %v columns back", len(bind))
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
 
-	sqlExpected := "DELETE FROM `customer` WHERE `id` = ?"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	//not registered structure
+	type testNonRegisteredStruct struct{}
+	if err = s.Find(&testNonRegisteredStruct{}, 1); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	if err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
 }
 
 func TestStorm_Delete(t *testing.T) {
+	var (
+		err   error
+		input testStructure = testStructure{1, `name`}
+		s                   = newTestStorm()
+		res   *sql.Row
+	)
 
-	storm := newTestStorm()
-
-	testEntity, err := storm.Get("product", 1)
-	if nil == testEntity || nil != err {
-		t.Fatalf("Cannot query for target entity or not found")
-	}
-
-	product := Product{1, ProductDescription{"test", 12.01}}
-	err = storm.Delete(product)
-
+	//normal
+	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	if err != nil {
-		t.Fatalf("Returned a error with message \"%v\" while trying to delete the entity", err)
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
 
-	testEntity, err = storm.Get("product", 1)
-	if nil != err {
-		t.Fatalf("Cannot query for target entity, error '%v'", err)
+	if err = s.Delete(input); err != nil {
+		t.Fatalf("Failed delete with error `%v`", err.Error())
 	}
 
-	if nil != testEntity {
-		t.Fatalf("Target entity does still exists in datastore, not deleted")
+	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	if err = res.Scan( &input.Id, &input.Name ); err != sql.ErrNoRows {
+		if err == nil {
+			t.Fatalf("Record not deleted")
+		}
+		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
+	}
+
+	//pointer variant
+	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	if err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	if err = s.Delete(&input); err != nil {
+		t.Fatalf("Failed delete with error `%v`", err.Error())
+	}
+
+	res = s.DB().QueryRow("SELECT * FROM `testStructure` WHERE `id` = ?", 1)
+	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
+		if err == nil {
+			t.Fatalf("Record not deleted")
+		}
+		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
 	}
 }
 
-func TestStorm_DeleteNotRegisteredStructure(t *testing.T) {
+func TestStorm_DeleteWrongInput(t *testing.T) {
 
-	storm := newTestStorm()
-	notRegisteredStructure := TestStructureWithTags{}
-	err := storm.Delete(notRegisteredStructure)
+	var err error
+	var expectedError string
+	s := newTestStorm()
 
-	if err == nil {
-		t.Fatalf("Expected a error but no error returned")
+	//not a structure
+	var inputInt int
+	if err = s.Delete(inputInt); err == nil {
+		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError := "No structure registered in repository of type 'storm.TestStructureWithTags'"
+	expectedError = `Provided input is not a structure type`
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+
+	//not a structure pointer
+	var inputIntPtr *int
+	if err = s.Delete(inputIntPtr); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = `Provided input is not a structure type`
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+
+	//not registered structure
+	type testNonRegisteredStruct struct{}
+	if err = s.Delete(&testNonRegisteredStruct{}); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
+
+func TestStorm_Save(t *testing.T) {
+
+	var (
+		err   error
+		input *testStructure
+		s     = newTestStorm()
+		res   *sql.Row
+	)
+
+	//update a existing entity
+	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, '2nd')")
+	if err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	input = &testStructure{1, `test updated`}
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (update) with error `%v`", err.Error())
+	}
+
+	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	if err = res.Scan(&input.Id, &input.Name); err != nil {
+		t.Fatalf("Expected to get a row back but got error %v", err)
+	}
+
+	if input.Name != "test updated" {
+		t.Fatalf("Entity data not updated")
+	}
+
+	//insert a new entity
+	input = &testStructure{0, "test insert"}
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
+	}
+
+	if input.Id == 0 {
+		t.Fatalf("Entity pk id not set")
+	}
+
+	if input.Id != 3 {
+		t.Fatalf("Expected to get entity PK 3 but got %v", input.Id)
+	}
+
+	//query for entity
+	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 3)
+	if err = res.Scan(&input.Id, &input.Name); err != nil {
+		t.Fatalf("Expected to get a row back but got error %v", err)
+	}
+
+	if err = assertEntity(input, &testStructure{3, "test insert"}); err != nil {
+		t.Fatalf(err.Error())
+	}
+}
+
+func TestStorm_SaveWrongInput(t *testing.T) {
+
+	var err error
+	var expectedError string
+	s := newTestStorm()
+
+	//not a pointer
+	var input testStructure
+	if err = s.Save(input); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = `Provided structure is not a pointer type`
 	if err.Error() != expectedError {
-		t.Fatalf("Expected error '%v' but got error '%v'", expectedError, err)
-	}
-}
-
-func TestStorm_DeleteNoPKDefined(t *testing.T) {
-	storm := newTestStorm()
-	productDescription := ProductDescription{}
-	err := storm.Delete(productDescription)
-
-	if err == nil {
-		t.Fatalf("Expected to get a error but got no error")
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
 
-	expectedError := "No primary key defined"
+	//not a structure pointer
+	var inputIntPtr *int
+	if err = s.Save(inputIntPtr); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = `Provided input is not a structure type`
 	if err.Error() != expectedError {
-		t.Errorf("Expected to get a error with the message \"%v\", but got message: \"%v\"", expectedError, err)
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
+	}
+
+	//not registered structure
+	type testNonRegisteredStruct struct{}
+	if err = s.Save(&testNonRegisteredStruct{}); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
+
+	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	if err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
 }
 
-func TestQuery_generateInsertSQL(t *testing.T) {
-	storm := newTestStorm()
-	entity := Customer{0, "customer1"}
+/*
+func TestStorm_CreateTable(t *testing.T) {
+	var (
+		err    error
+		result int = 0
+	)
+
+	s, _ := Open(`sqlite3`, `:memory:`)
+	s.RegisterStructure((*testStructure)(nil), `testStructure`)
+
+	if result != 0 {
+		t.Fatalf("Table does exists, cannot create")
+	}
+
+	err = s.CreateTable((*testStructure)(nil))
+	if err != nil {
+		t.Fatalf("Failure creating new table `%v`", err)
+	}
+
+	result, err = assertTableExist("testStructure", s.DB())
+	if err != nil {
+		t.Fatalf("Error while determing if new table exists `%v`", err)
+	}
+
+	if result != 1 {
+		t.Fatalf("Table not created")
+	}
+}
+
+func TestStorm_DropTable(t *testing.T) {
+	var (
+		err    error
+		result int = 0
+		s          = newTestStorm()
+	)
+
+	//check if table does exists
+	result, err = assertTableExist("testStructure", s.DB())
+	if err != nil {
+		t.Fatalf("Error while determing if table exists `%v`", err)
+	}
+
+	if result != 1 {
+		t.Fatalf("Table does not exist, nothing to drop", err)
+	}
+
+	//drop the table
+	err = s.DropTable((*testStructure)(nil))
+	if err != nil {
+		t.Fatalf("Failure creating new table `%v`", err)
+	}
+
+	//check if table does not exists
+	result, err = assertTableExist("testStructure", s.DB())
+	if err != nil {
+		t.Fatalf("Error while determing if table is dropped `%v`", err)
+	}
+
+	if result != 0 {
+		t.Fatalf("Table is not dropped")
+	}
+}
+
+//Test where passtrough
+func TestStorm_Where(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		q  = s.Where("id = ?", 1)
+		v  []interface{}
+		ok bool
+	)
+
+	if v, ok = q.where["id = ?"]; ok != true {
+		t.Fatalf("Where statement not found in query")
+	}
+
+	if len(v) != 1 && v[0].(int) != 1 {
+		t.Fatalf("Expected where statement value")
+	}
+}
+
+//Test order passtrough
+func TestStorm_Order(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		q  = s.Order("test", ASC)
+		v  SortDirection
+		ok bool
+	)
+
+	if v, ok = q.order["test"]; ok != true {
+		t.Fatalf("Order statement not found in query")
+	}
+
+	if v != ASC {
+		t.Fatalf("Expected order statement value")
+	}
+}
+
+//Test limit passtrough
+func TestStorm_Limit(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		q  = s.Limit(123)
+	)
+
+	if q.limit != 123 {
+		t.Fatalf("Expected limit value of 123 but got %d", q.limit)
+	}
+}
+
+//Test offset passtrough
+func TestStorm_Offset(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		q  = s.Offset(123)
+	)
+
+	if q.offset != 123 {
+		t.Fatalf("Expected offset value of 123 but got %d", q.offset)
+	}
+}
+
+//--------------------------------------
+// SQL helpers
+//--------------------------------------
+*/
+func TestStorm_generateDeleteSql(t *testing.T) {
+	s := newTestStorm()
+	entity := testStructure{1, "test"}
+	tbl, _ := s.getTable(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
-	tblMap := storm.repository.getTableMap("customer")
-	sql, bind := storm.generateInsertSQL(v, tblMap)
+
+	sqlQuery, bind := s.generateDeleteSQL(v, tbl)
 
 	if len(bind) != 1 {
-		t.Errorf("Expected to get 1 columns to bind but got %v columns back", len(bind))
+		t.Fatalf("Expected to get 1 columns to bind but got %v columns back", len(bind))
 	}
 
-	sqlExpected := "INSERT INTO `customer`(`name`) VALUES (?)"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	if bind[0] != 1 {
+		t.Errorf("Expected to get 1 bind value with the value 1 but got value %v", bind[0])
+	}
+
+	sqlExpected := "DELETE FROM `testStructure` WHERE `id` = ?"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
 }
 
-func TestQuery_generateUpdateSQL(t *testing.T) {
-	storm := newTestStorm()
-	entity := Customer{1, "customer1"}
+func TestStorm_generateInsertSQL(t *testing.T) {
+	s := newTestStorm()
+	entity := testStructure{0, "test"}
+	tbl, _ := s.getTable(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
-	tblMap := storm.repository.getTableMap("customer")
-	sql, bind := storm.generateUpdateSQL(v, tblMap)
+
+	sqlQuery, bind := s.generateInsertSQL(v, tbl)
+
+	if len(bind) != 1 {
+		t.Fatalf("Expected to get 1 columns to bind but got %v columns back", len(bind))
+	}
+
+	if bind[0] != "test" {
+		t.Errorf("Expected to get 1 bind value with the value `test` but got value %v", bind[0])
+	}
+
+	sqlExpected := "INSERT INTO `testStructure` (`name`) VALUES (?)"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
+	}
+}
+
+func TestStorm_generateUpdateSQL(t *testing.T) {
+	s := newTestStorm()
+	entity := testStructure{2, "test"}
+	tbl, _ := s.getTable(reflect.TypeOf(entity))
+	v := reflect.ValueOf(entity)
+
+	sqlQuery, bind := s.generateUpdateSQL(v, tbl)
 
 	if len(bind) != 2 {
-		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))
+		t.Fatalf("Expected to get 2 columns to bind but got %v columns back", len(bind))
 	}
 
-	sqlExpected := "UPDATE `customer` SET `name` = ? WHERE `id` = ?"
-	if sql != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
-	}
-}
-
-func TestStorm_SaveNewEntity(t *testing.T) {
-
-	storm := newTestStorm()
-	entity, err := storm.Get("product", 4)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
+	if bind[0] != "test" {
+		t.Errorf("Expected to get 1st bind value with the value `test` but got value %v", bind[0])
 	}
 
-	if entity != nil {
-		t.Fatalf("Should not return an entity, next new entity should be id:4")
+	if bind[1] != 2 {
+		t.Errorf("Expected to get 2nd bind value with the value `2` but got value %v", bind[1])
 	}
 
-	productNew := &Product{0, ProductDescription{"product4", 11.22}}
-	err = storm.Save(productNew)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
-	}
-
-	if productNew.Id != 4 {
-		t.Errorf("Expected to have the pk id updated, expected a %v but got %v", 4, productNew.Id)
-	}
-
-	//check if in db
-	entity, _ = storm.Get("product", 4)
-
-	if entity == nil {
-		t.Fatalf("Enity not saved, database returned no result")
-	}
-
-	product, _ := entity.(*Product)
-	if product.Id != 4 || product.Name != "product4" || product.Price != 11.22 {
-		t.Errorf("Entity expected data after update mismatch, expected a %v but got %v", Product{4, ProductDescription{"product4", 11.22}}, product)
+	sqlExpected := "UPDATE `testStructure` SET `name` = ? WHERE `id` = ?"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
 }
 
-func TestStorm_SaveExistingEntity(t *testing.T) {
-	storm := newTestStorm()
-	entity, err := storm.Get("product", 1)
+/*
+func TestStorm_generateCreateTableSQL(t *testing.T) {
+	s := newTestStorm()
+	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
 
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while getting the element", err)
-	}
-
-	if entity == nil {
-		t.Fatalf("Returned an empty entity")
-	}
-
-	product, ok := entity.(*Product)
-	if !ok {
-		t.Fatalf("Conversion of returned entity failed to *Product")
-	}
-
-	if product.Id != 1 || product.Name != "product1" || product.Price != 12.01 {
-		t.Errorf("Entity start data mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1", 12.01}}, product)
-	}
-
-	product.Name = "product1updated"
-	product.Price = 11.33
-	err = storm.Save(product)
-
-	if nil != err {
-		t.Fatalf("Returned a error with message \"%v\" while saving the element", err)
-	}
-
-	entity, _ = storm.Get("product", 1)
-	product, _ = entity.(*Product)
-
-	if product.Id != 1 || product.Name != "product1updated" || product.Price != 11.33 {
-		t.Errorf("Entity expected data after update mismatch, expected a %v but got %v", Product{1, ProductDescription{"product1updated", 11.33}}, product)
+	sqlQuery := s.generateCreateTableSQL(tbl)
+	sqlExpected := "CREATE TABLE `testStructure` (`id` integer,`name` text)"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
 }
 
-func TestStorm_SaveEntityWithoutUsingPointerError(t *testing.T) {
 
-	storm := newTestStorm()
+func TestStorm_generateDropTableSQL(t *testing.T) {
+	s := newTestStorm()
+	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
 
-	productNew := Product{0, ProductDescription{"product4", 11.22}}
-	err := storm.Save(productNew)
-
-	if nil == err {
-		t.Fatalf("Expected to get a error but no error given")
-	}
-
-	expectedError := "storm: passed structure is not a pointer: {0 {product4 11.22}} (kind=struct)"
-	if err.Error() != expectedError {
-		t.Errorf("Expected to get a error with the message \"%s\", but got message: \"%s\"", expectedError, err)
+	sqlQuery := s.generateDropTableSQL(tbl)
+	sqlExpected := "DROP TABLE `testStructure`"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
 }
+*/

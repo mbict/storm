@@ -1,11 +1,8 @@
-// Copyright (c) 2013 Michael Boke (MBIct). All rights reserved.
-// Use of this source code is governed by a MIT-style
-// license that can be found in the LICENSE file.
-
-package storm
+package storm2
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -18,262 +15,240 @@ const (
 	DESC SortDirection = "DESC"
 )
 
-type QueryInterface interface {
-	Column(columnNames ...string) *QueryInterface
-	Order(column string, direction SortDirection) *QueryInterface
-	Where(condition string, bindAttr ...interface{}) *QueryInterface
-	Limit(limit int) *QueryInterface
-	Offset(offset int) *QueryInterface
-	Select(i interface{}) ([]interface{}, error)
-	Count() (int64, error)
-}
-
 type Query struct {
-	tblMap *TableMap
 	storm  *Storm
+	tx     *sql.Tx
+	parent *Query
 
-	columns []string
-	where   map[string][]interface{}
-	order   map[string]SortDirection
-	offset  int
-	limit   int
+	where  map[string][]interface{}
+	order  map[string]SortDirection
+	offset int
+	limit  int
 }
 
-func NewQuery(tblMap *TableMap, connection *Storm) *Query {
-	q := &Query{
-		tblMap: tblMap,
-		storm:  connection,
+func newQuery(storm *Storm, parent *Query, tx *sql.Tx) *Query {
+	return &Query{
+		storm:  storm,
+		tx:     tx,
+		parent: parent,
+		where:  make(map[string][]interface{}),
+		order:  make(map[string]SortDirection),
 	}
-
-	//init
-	q.order = make(map[string]SortDirection)
-	q.where = make(map[string][]interface{})
-
-	return q
 }
 
-//
-func (q *Query) Column(columnNames ...string) *Query {
-	if len(columnNames) > 0 {
-		q.columns = append(q.columns, columnNames...)
+//Returns a new query object
+func (this *Query) Query() *Query {
+	return newQuery(this.storm, this, nil)
+}
+
+func (this *Query) Order(column string, direction SortDirection) *Query {
+	this.order[column] = direction
+	return this
+}
+
+func (this *Query) Where(condition string, bindAttr ...interface{}) *Query {
+	this.where[condition] = bindAttr
+	return this
+}
+
+func (this *Query) Limit(limit int) *Query {
+	this.limit = limit
+	return this
+}
+
+func (this *Query) Offset(offset int) *Query {
+	this.offset = offset
+	return this
+}
+
+func (this *Query) Find(i interface{}, where ...interface{}) error {
+
+	if len(where) >= 1 {
+		return this.Query().fetchRow(i, this.getContext(), where...)
 	}
-	return q
+	return this.fetchRow(i, this.getContext())
 }
 
-//
-func (q *Query) Limit(limit int) *Query {
-	q.limit = limit
-	return q
+func (this *Query) Select(i interface{}) error {
+	return this.fetchAll(i, this.getContext())
 }
 
-//
-func (q *Query) Offset(offset int) *Query {
-	q.offset = offset
-	return q
+func (this *Query) SelectRow(i interface{}) error {
+	return this.Find(i)
 }
 
-// Set the order
-func (q *Query) Order(column string, direction SortDirection) *Query {
-	q.order[column] = direction
-	return q
+func (this *Query) Count(*int64) error {
+	return nil
 }
 
-//
-func (q *Query) Where(condition string, bindAttr ...interface{}) *Query {
-	q.where[condition] = bindAttr
-	return q
-}
-
-//Selectute a select into a slice structure
-func (q *Query) Select(i interface{}) ([]interface{}, error) {
-
-	var destIsPointer bool = false
-	if i != nil {
-		t := reflect.TypeOf(i)
-
-		if t.Kind() != reflect.Ptr {
-			return nil, errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
-		}
-
-		if t.Elem().Kind() != reflect.Slice {
-			return nil, errors.New(fmt.Sprintf("storm: passed value is not a slice type but a %v", t.Elem().Kind()))
-		}
-
-		if t.Elem().Elem().Kind() == reflect.Ptr {
-			destIsPointer = true
-
-			if t.Elem().Elem().Elem() != q.tblMap.goType {
-				return nil, errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem().Elem()))
-			}
-		} else if t.Elem().Elem() != q.tblMap.goType {
-			return nil, errors.New(fmt.Sprintf("storm: passed slice type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
-		}
-	}
-
-	sql, bind := q.generateSelectSQL()
-	stmt, err := q.storm.db.Prepare(sql)
+//begin a new transaction based on this query
+func (this *Query) Begin() *Transaction {
+	tx, err := this.storm.db.Begin()
 	if err != nil {
-		return nil, err
+		panic(err)
+	}
+
+	return newTransaction(this.Query(), tx)
+}
+
+//create additional where stements from arguments
+func (this *Query) applyWhere(tbl *table, where ...interface{}) error {
+
+	switch t := where[0].(type) {
+	case string:
+		this.Where(t, where[1:]...)
+	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64, sql.NullInt64:
+
+		if len(tbl.keys) == 1 {
+			if len(where) == 1 {
+				this.Where(fmt.Sprintf("%s = ?", this.storm.dialect.Quote(tbl.keys[0].columnName)), where...)
+			} else {
+				return errors.New("Not implemented having multiple pk values for find")
+			}
+		} else {
+			return errors.New("Not implemented having multiple pks for find")
+		}
+	default:
+		return errors.New("Unsupported pk find type")
+	}
+
+	return nil
+}
+
+//fetch a single row into a element
+func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (err error) {
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("Provided structure is not a pointer type")
+	}
+
+	v = v.Elem()
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+	}
+	v = reflect.Indirect(v)
+
+	if v.Kind() != reflect.Struct || !v.CanSet() {
+		return errors.New("Provided input is not a structure type")
+	}
+
+	//if !v.CanSet() {
+	//	return errors.New("Provided input is not assignable")
+	//}
+
+	//find the table
+	tbl, ok := this.storm.getTable(v.Type())
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type().String()))
+	}
+
+	//add the last minute where
+	if len(where) >= 1 {
+		if err = this.applyWhere(tbl, where...); err != nil {
+			return err
+		}
+	}
+
+	//generate sql and prepare
+	sqlQuery, bind := this.generateSelectSQL(tbl)
+	stmt, err := db.Prepare(sqlQuery)
+	if err != nil {
+		return err
 	}
 	defer stmt.Close()
 
+	//query the row
+	row := stmt.QueryRow(bind...)
+
+	//create destination and scan
+	dest := make([]interface{}, len(tbl.columns))
+	for key, col := range tbl.columns {
+		dest[key] = v.FieldByIndex(col.goIndex).Addr().Interface()
+	}
+	return row.Scan(dest...)
+}
+
+//fetch a single row into a element
+func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
+
+	ts := reflect.TypeOf(i)
+	if ts.Kind() != reflect.Ptr {
+		return errors.New("Provided input is not a pointer type")
+	}
+
+	if ts.Elem().Kind() != reflect.Slice {
+		return errors.New("Provided input pointer is not a slice type")
+	}
+
+	//get the element type
+	t := ts.Elem().Elem()
+	var sliceTypeIsPtr = false
+	if t.Kind() == reflect.Ptr {
+		sliceTypeIsPtr = true
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return errors.New("Provided input slice has no structure type")
+	}
+
+	//find the table
+	tbl, ok := this.storm.getTable(t)
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t.String()))
+	}
+
+	//generate sql and prepare
+	sqlQuery, bind := this.generateSelectSQL(tbl)
+	stmt, err := db.Prepare(sqlQuery)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	//query for the results
 	rows, err := stmt.Query(bind...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
-	var vSlice reflect.Value
-	var list []interface{} = nil
-	if i != nil {
-		vSlice = reflect.ValueOf(i).Elem()
-	} else {
-		list = make([]interface{}, 0)
-	}
-
+	vs := reflect.ValueOf(i).Elem()
 	for {
 		if !rows.Next() {
 			// if error occured return rawselect
 			if rows.Err() != nil {
-				return nil, rows.Err()
+				return rows.Err()
+			} else if vs.Len() == 0 {
+				return sql.ErrNoRows
 			}
-
-			return list, nil
+			return nil
 		}
 
-		v := reflect.New(q.tblMap.goType)
-		dest := make([]interface{}, len(q.tblMap.columns))
-		for key, col := range q.tblMap.columns {
+		v := reflect.New(tbl.goType)
+
+		//create destination and scan
+		dest := make([]interface{}, len(tbl.columns))
+		for key, col := range tbl.columns {
 			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
 		}
 		err = rows.Scan(dest...)
+
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		if i == nil { //append to the list
-			list = append(list, v.Interface())
+		if sliceTypeIsPtr == true {
+			vs.Set(reflect.Append(vs, v))
 		} else {
-			if false == destIsPointer {
-				vSlice.Set(reflect.Append(vSlice, v.Elem()))
-			} else {
-				vSlice.Set(reflect.Append(vSlice, v))
-			}
+			vs.Set(reflect.Append(vs, v.Elem()))
 		}
 	}
 }
 
-//
-func (q *Query) SelectRow(i interface{}) (interface{}, error) {
-
-	var destIsPointer bool = false
-	if i != nil {
-		t := reflect.TypeOf(i)
-
-		if t.Kind() != reflect.Ptr {
-			return nil, errors.New(fmt.Sprintf("storm: passed value is not of a pointer type but %v", t.Kind()))
-		}
-
-		if t.Elem().Kind() == reflect.Ptr {
-			destIsPointer = true
-
-			if t.Elem().Elem() != q.tblMap.goType {
-				return nil, errors.New(fmt.Sprintf("storm: passed type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem().Elem()))
-			}
-		} else {
-			if t.Elem() != q.tblMap.goType {
-				return nil, errors.New(fmt.Sprintf("storm: passed type is not of the type %v where this query is based upon but its a %v", q.tblMap.goType, t.Elem()))
-			}
-		}
-	}
-
-	sql, bind := q.generateSelectSQL()
-	stmt, err := q.storm.db.Prepare(sql)
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
-
-	row := stmt.QueryRow(bind...)
-	var v reflect.Value
-	if i != nil {
-		if false == destIsPointer {
-			v = reflect.ValueOf(i)
-		} else {
-			v = reflect.New(q.tblMap.goType)
-
-			//set the new type into the pointer
-			vPtr := reflect.ValueOf(i)
-			vPtr.Elem().Set(v)
-		}
-	} else {
-		v = reflect.New(q.tblMap.goType)
-	}
-
-	dest := make([]interface{}, len(q.tblMap.columns))
-	for key, col := range q.tblMap.columns {
-		dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
-	}
-	err = row.Scan(dest...)
-	if err != nil {
-		if "sql: no rows in result set" == err.Error() {
-			//no row found we return nil
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	if i == nil {
-		return v.Interface(), nil
-	} else {
-		return nil, nil
-	}
-}
-
-//
-func (q *Query) Count() (int64, error) {
-
-	var bindVars []interface{}
-	var sql bytes.Buffer
-
-	//add table name
-	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM `%v`", q.tblMap.Name))
-
-	//add where
-	if len(q.where) > 0 {
-
-		sql.WriteString(" WHERE ")
-
-		//create where keys
-		pos := 0
-		for cond, attr := range q.where {
-			if pos > 0 {
-				sql.WriteString(" AND ")
-			}
-			sql.WriteString(cond)
-
-			bindVars = append(bindVars, attr...)
-			pos++
-		}
-	}
-
-	stmt, err := q.storm.db.Prepare(sql.String())
-	if err != nil {
-		return 0, err
-	}
-
-	var count int64
-	row := stmt.QueryRow(bindVars...)
-	err = row.Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
-//perpare a select statement
-func (q *Query) generateSelectSQL() (string, []interface{}) {
+func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
@@ -283,35 +258,25 @@ func (q *Query) generateSelectSQL() (string, []interface{}) {
 
 	//create columns
 	pos = 0
-	if len(q.columns) > 0 {
-		for _, col := range q.columns {
-			if pos > 0 {
-				sql.WriteString(", ")
-			}
-			sql.WriteString(fmt.Sprintf("`%v`", col))
-			pos++
+	for _, col := range tbl.columns {
+		if pos > 0 {
+			sql.WriteString(", ")
 		}
-	} else {
-		for _, col := range q.tblMap.columns {
-			if pos > 0 {
-				sql.WriteString(", ")
-			}
-			sql.WriteString(fmt.Sprintf("`%v`", col.Name))
-			pos++
-		}
+		sql.WriteString(fmt.Sprintf("`%v`", col.columnName))
+		pos++
 	}
 
 	//add table name
-	sql.WriteString(fmt.Sprintf(" FROM `%v`", q.tblMap.Name))
+	sql.WriteString(fmt.Sprintf(" FROM `%v`", tbl.tableName))
 
 	//add where
-	if len(q.where) > 0 {
+	if len(this.where) > 0 {
 
 		sql.WriteString(" WHERE ")
 
 		//create where keys
 		pos = 0
-		for cond, attr := range q.where {
+		for cond, attr := range this.where {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
@@ -323,10 +288,10 @@ func (q *Query) generateSelectSQL() (string, []interface{}) {
 	}
 
 	//add order
-	if len(q.order) > 0 {
+	if len(this.order) > 0 {
 		sql.WriteString(" ORDER BY ")
 		pos = 0
-		for col, dir := range q.order {
+		for col, dir := range this.order {
 			if pos > 0 {
 				sql.WriteString(", ")
 			}
@@ -336,14 +301,27 @@ func (q *Query) generateSelectSQL() (string, []interface{}) {
 	}
 
 	//add limit
-	if q.limit > 0 {
-		sql.WriteString(fmt.Sprintf(" LIMIT %d", q.limit))
+	if this.limit > 0 {
+		sql.WriteString(fmt.Sprintf(" LIMIT %d", this.limit))
 	}
 
 	//add offset
-	if q.offset > 0 {
-		sql.WriteString(fmt.Sprintf(" OFFSET %d", q.offset))
+	if this.offset > 0 {
+		sql.WriteString(fmt.Sprintf(" OFFSET %d", this.offset))
 	}
 
 	return sql.String(), bindVars
+}
+
+//get the closest connection (session) or a common connection if none
+func (this *Query) getContext() (db sqlCommon) {
+	if this.tx != nil {
+		return this.tx
+	}
+
+	if this.parent == nil {
+		return this.storm.db
+	}
+
+	return this.parent.getContext()
 }

@@ -1,8 +1,4 @@
-// Copyright (c) 2013 Michael Boke (MBIct). All rights reserved.
-// Use of this source code is governed by a MIT-style
-// license that can be found in the LICENSE file.
-
-package storm
+package storm2
 
 import (
 	"bytes"
@@ -10,260 +6,218 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
+
+	"github.com/mbict/storm2/dialect"
 )
 
 type Storm struct {
-	repository *Repository
-	db         *sql.DB
-	dialect    Dialect
+	db        *sql.DB
+	dialect   dialect.Dialect
+	tables    map[reflect.Type]*table
+	tableLock sync.RWMutex
 }
 
-func NewStorm(db *sql.DB, dialect Dialect, repository *Repository) *Storm {
-	s := Storm{}
-	s.repository = repository
-	s.dialect = dialect
-	s.db = db
-
-	return &s
+func Open(driverName string, dataSourceName string) (*Storm, error) {
+	db, err := sql.Open(driverName, dataSourceName)
+	return &Storm{
+		db:      db,
+		dialect: dialect.New(driverName),
+		tables:  make(map[reflect.Type]*table),
+	}, err
 }
 
-//cleanup and close db connection
-func (s *Storm) Close() error {
-	return s.db.Close()
+func (this *Storm) DB() *sql.DB {
+	return this.db
 }
 
-//get a query stack for an entity
-func (s *Storm) Query(entityName string) (*Query, error) {
-
-	tblMap := s.repository.getTableMap(entityName)
-	if tblMap == nil {
-		return nil, errors.New("No entity with the name '" + entityName + "' found")
-	}
-
-	return NewQuery(tblMap, s), nil
+func (this *Storm) Query() *Query {
+	return newQuery(this, nil, nil)
 }
 
-//get a single entity from the datastore
-func (s *Storm) Get(entityName string, keys ...interface{}) (interface{}, error) {
-
-	q, err := s.Query(entityName)
-	if err != nil {
-		return nil, err
-	}
-
-	pkc := len(q.tblMap.keys)
-	if pkc == 0 {
-		return nil, errors.New("No primary key defined")
-	}
-
-	if pkc > len(keys) {
-		return nil, errors.New(fmt.Sprintf("Not engough arguments for provided for primary keys, need %d attributes", pkc))
-	}
-
-	//add where keys
-	for key, col := range q.tblMap.keys {
-		q.Where(fmt.Sprintf("`%v` = ?", col.Name), keys[key])
-	}
-
-	result, err := q.SelectRow(nil)
-	if err != nil {
-
-		if "sql: no rows in result set" == err.Error() {
-			//no row found we return nil
-			return nil, nil
-		}
-		return nil, err
-	}
-	return result, nil
+func (this *Storm) Order(column string, direction SortDirection) *Query {
+	return this.Query().Order(column, direction)
 }
 
-//update a entity
-func (s *Storm) Save(entity interface{}) error {
+func (this *Storm) Where(condition string, bindAttr ...interface{}) *Query {
+	return this.Query().Where(condition, bindAttr...)
+}
 
-	v := reflect.ValueOf(entity)
+func (this *Storm) Limit(limit int) *Query {
+	return this.Query().Limit(limit)
+}
 
-	//check if the passed item is a pointer
-	if v.Type().Kind() != reflect.Ptr {
-		return errors.New(fmt.Sprintf("storm: passed structure is not a pointer: %v (kind=%v)", entity, v.Kind()))
+func (this *Storm) Offset(offset int) *Query {
+	return this.Query().Offset(offset)
+}
+
+func (this *Storm) Find(i interface{}, where ...interface{}) error {
+	return this.Query().Find(i, where...)
+}
+
+func (this *Storm) Delete(i interface{}) error {
+	return this.deleteEntity(i, this.db)
+}
+
+func (this *Storm) Save(i interface{}) error {
+	return this.saveEntity(i, this.db)
+}
+
+func (this *Storm) Begin() *Query {
+	return nil
+}
+
+func (this *Storm) CreateTable(i interface{}) error {
+	return nil
+}
+
+func (this *Storm) DropTable(i interface{}) error {
+	return nil
+}
+
+func (this *Storm) RegisterStructure(i interface{}, name string) error {
+
+	t := reflect.TypeOf(i)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return errors.New("Provided input is not a structure type")
+	}
+
+	this.tableLock.Lock()
+	defer this.tableLock.Unlock()
+
+	if _, exists := this.tables[t]; exists == true {
+		return errors.New(fmt.Sprintf("Duplicate structure, '%v' already exists", t.String()))
+	}
+
+	this.tables[t] = newTable(reflect.Zero(t), name)
+	return nil
+}
+
+//helpers
+
+func (this *Storm) deleteEntity(i interface{}, db sqlCommon) (err error) {
+	v := reflect.Indirect(reflect.ValueOf(i))
+	if v.Kind() != reflect.Struct {
+		return errors.New("Provided input is not a structure type")
+	}
+
+	//find the table
+	tbl, ok := this.getTable(v.Type())
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
+	}
+
+	deleteSql, bind := this.generateDeleteSQL(v, tbl)
+
+	_, err = db.Exec(deleteSql, bind...)
+	return err
+}
+
+func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
+
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("Provided structure is not a pointer type")
 	}
 
 	v = v.Elem()
-	tblMap := s.repository.tableMapByType(v.Type())
-	if tblMap == nil {
-		return errors.New("No structure registered in repository of type '" + v.Type().String() + "'")
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+	}
+	v = reflect.Indirect(v)
+
+	if v.Kind() != reflect.Struct || !v.CanSet() {
+		return errors.New("Provided input is not a structure type")
 	}
 
-	pkCount := len(tblMap.keys)
-	if pkCount == 0 {
-		return errors.New("No primary key defined")
-	} else if pkCount > 1 {
-		return errors.New("Entities with more than 1 pk currently not suppported")
+	//find the table
+	tbl, ok := this.getTable(v.Type())
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type().String()))
 	}
 
-	//update if pk is non zero
 	var (
-		getLastInsertId bool = false
-		sql             string
-		bind            []interface{}
-		pkValue         int64 = v.FieldByIndex(tblMap.keys[0].goIndex).Int()
+		sqlQuery string
+		bind     []interface{}
 	)
 
-	if pkValue == 0 {
-		//insert
-		getLastInsertId = true
-		sql, bind = s.generateInsertSQL(v, tblMap)
-	} else {
-		//update
-		sql, bind = s.generateUpdateSQL(v, tblMap)
-	}
-
-	stmt, err := s.db.Prepare(sql)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	//get the pk if this was a insert
-	if getLastInsertId == true {
-		id, err := s.dialect.InsertAutoIncrement(stmt, bind...)
-		if err != nil {
-			return err
-		}
-
-		if v.FieldByIndex(tblMap.keys[0].goIndex).CanSet() {
-			v.FieldByIndex(tblMap.keys[0].goIndex).SetInt(id)
+	if tbl.aiColumn != nil {
+		var insert bool = v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
+		if insert == true {
+			//insert
+			sqlQuery, bind = this.generateInsertSQL(v, tbl)
 		} else {
-
+			sqlQuery, bind = this.generateUpdateSQL(v, tbl)
 		}
-	} else {
-		_, err = stmt.Exec(bind...)
+
+		//prepare
+		stmt, err := db.Prepare(sqlQuery)
 		if err != nil {
 			return err
 		}
-	}
+		defer stmt.Close()
 
-	return nil
+		if insert == true {
+			id, err := this.dialect.InsertAutoIncrement(stmt, bind...)
+			v.FieldByIndex(tbl.aiColumn.goIndex).SetInt(id)
+			return err
+		} else {
+			_, err := stmt.Exec(bind...)
+			return err
+		}
+	} else {
+		return errors.New("No PK auto increment field defined dont know yet if to update or insert")
+	}
 }
 
-//delete a entity
-func (s *Storm) Delete(entity interface{}) error {
-
-	v := reflect.ValueOf(entity)
-	tblMap := s.repository.tableMapByType(v.Type())
-
-	if tblMap == nil {
-		return errors.New("No structure registered in repository of type '" + v.Type().String() + "'")
-	}
-
-	if len(tblMap.keys) == 0 {
-		return errors.New("No primary key defined")
-	}
-
-	//execute
-	sql, bind := s.generateDeleteSQL(v, tblMap)
-	stmt, err := s.db.Prepare(sql)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	_, err = stmt.Exec(bind...)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Generation of insert sql
-// @todo implement dialect
-func (s *Storm) generateInsertSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
+func (this *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []interface{}) {
 	var (
-		sqlColumns bytes.Buffer
-		sqlValues  bytes.Buffer
-		pos        int = 0
-		bind           = make([]interface{}, 0)
+		sqlQuery bytes.Buffer
+		pos      int = 0
+		bind         = make([]interface{}, 0)
 	)
 
-	for _, col := range tblMap.columns {
-		for _, pk := range tblMap.keys {
-			if col != pk {
-				if pos > 0 {
-					sqlColumns.WriteString(", ")
-					sqlValues.WriteString(", ")
-				}
-
-				sqlColumns.WriteString(fmt.Sprintf("`%s`", col.Name))
-				sqlValues.WriteString("?")
-				bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
-				pos++
-			}
-		}
-	}
-
-	return fmt.Sprintf("INSERT INTO `%s`(%s) VALUES (%s)", tblMap.Name, sqlColumns.String(), sqlValues.String()), bind
-}
-
-// Generate update sql
-// @todo need to implement dialect
-func (s *Storm) generateUpdateSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
-
-	var (
-		sql  bytes.Buffer
-		pos  int = 0
-		bind     = make([]interface{}, 0)
-	)
-
-	sql.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tblMap.Name))
-
-	for _, col := range tblMap.columns {
-		for _, pk := range tblMap.keys {
-			if col != pk {
-				if pos > 0 {
-					sql.WriteString(", ")
-				}
-
-				sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
-				bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
-				pos++
-			}
-		}
-	}
-
-	sql.WriteString(" WHERE ")
-	pos = 0
-	for _, col := range tblMap.keys {
+	sqlQuery.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tbl.tableName))
+	for _, col := range tbl.keys {
 		if pos > 0 {
-			sql.WriteString(" AND ")
+			sqlQuery.WriteString(" AND ")
 		}
-		sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
-		bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
+		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+
+		bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
 		pos++
 	}
 
-	return sql.String(), bind
+	return sqlQuery.String(), bind
 }
 
-// Generation of delete sql
-// @todo need to implement dialect
-func (s *Storm) generateDeleteSQL(entityValue reflect.Value, tblMap *TableMap) (string, []interface{}) {
+func (this *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+	return "", nil
+}
 
-	var (
-		sql  bytes.Buffer
-		pos  int = 0
-		bind     = make([]interface{}, 0)
-	)
+func (this *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+	return "", nil
+}
 
-	sql.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tblMap.Name))
-	for _, col := range tblMap.keys {
-		if pos > 0 {
-			sql.WriteString(" AND ")
-		}
-		sql.WriteString(fmt.Sprintf("`%s` = ?", col.Name))
+func (this *Storm) generateCreateTableSQL(tbl *table) string {
+	return ""
+}
 
-		bind = append(bind, entityValue.FieldByIndex(col.goIndex).Interface())
-		pos++
-	}
+func (this *Storm) generateDropTableSQL(tbl *table) string {
+	return ""
+}
 
-	return sql.String(), bind
+func (this *Storm) getTable(t reflect.Type) (tbl *table, ok bool) {
+
+	this.tableLock.RLock()
+	defer this.tableLock.RUnlock()
+
+	tbl, ok = this.tables[t]
+	return
 }
