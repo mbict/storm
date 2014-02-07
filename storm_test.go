@@ -429,6 +429,7 @@ func TestStorm_DropTable(t *testing.T) {
 		t.Fatalf("Table is not dropped")
 	}
 }
+*/
 
 //Test where passtrough
 func TestStorm_Where(t *testing.T) {
@@ -493,7 +494,6 @@ func TestStorm_Offset(t *testing.T) {
 //--------------------------------------
 // SQL helpers
 //--------------------------------------
-*/
 func TestStorm_generateDeleteSql(t *testing.T) {
 	s := newTestStorm()
 	entity := testStructure{1, "test"}

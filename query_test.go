@@ -1,6 +1,5 @@
 package storm
 
-/*
 import (
 	"database/sql"
 	"reflect"
@@ -139,5 +138,3 @@ func TestQuery_generateSelect(t *testing.T) {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
 	}
 }
-
-*/
