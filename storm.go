@@ -1,4 +1,4 @@
-package storm2
+package storm
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/mbict/storm2/dialect"
+	"github.com/mbict/storm/dialect"
 )
 
 type Storm struct {
@@ -198,11 +198,68 @@ func (this *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []int
 }
 
 func (this *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []interface{}) {
-	return "", nil
+	var (
+		sqlColumns bytes.Buffer
+		sqlValues  bytes.Buffer
+		pos        int = 0
+		bind           = make([]interface{}, 0)
+	)
+
+	for _, col := range tbl.columns {
+		if col != tbl.aiColumn {
+			if pos > 0 {
+				sqlColumns.WriteString(", ")
+				sqlValues.WriteString(", ")
+			}
+
+			sqlColumns.WriteString(fmt.Sprintf("`%s`", col.columnName))
+			sqlValues.WriteString("?")
+			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
+			pos++
+		}
+	}
+
+	return fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", tbl.tableName, sqlColumns.String(), sqlValues.String()), bind
 }
 
 func (this *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []interface{}) {
-	return "", nil
+	var (
+		sqlQuery bytes.Buffer
+		pos      int = 0
+		bind         = make([]interface{}, 0)
+	)
+
+	sqlQuery.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tbl.tableName))
+
+	for _, col := range tbl.columns {
+		if col != tbl.aiColumn {
+			if pos > 0 {
+				sqlQuery.WriteString(", ")
+			}
+
+			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
+			pos++
+		}
+	}
+
+	sqlQuery.WriteString(" WHERE ")
+	pos = 0
+
+	if tbl.aiColumn != nil {
+		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", tbl.aiColumn.columnName))
+		bind = append(bind, v.FieldByIndex(tbl.aiColumn.goIndex).Interface())
+	} else {
+		for _, col := range tbl.keys {
+			if pos > 0 {
+				sqlQuery.WriteString(" AND ")
+			}
+			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
+			pos++
+		}
+	}
+	return sqlQuery.String(), bind
 }
 
 func (this *Storm) generateCreateTableSQL(tbl *table) string {

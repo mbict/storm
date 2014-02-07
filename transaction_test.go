@@ -1,4 +1,4 @@
-package storm2
+package storm
 /*
 import "testing"
 

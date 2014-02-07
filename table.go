@@ -1,4 +1,4 @@
-package storm2
+package storm
 
 import (
 	"reflect"
@@ -24,13 +24,15 @@ func newTable(v reflect.Value, name string) *table {
 
 	//read the structure
 	cols := extractStructColumns(v, nil)
-
+	pks := findPKs(cols)
+	
 	//create the table structure
 	return &table{
 		tableName: name,
 		goType:    v.Type(),
 		columns:   cols,
-		keys:      findPKs(cols),
+		keys:      pks,
+		aiColumn:  findAI(cols, pks),
 	}
 }
 
@@ -116,4 +118,20 @@ func findPKs(cols []*column) (pks []*column) {
 		}
 	}
 	return
+}
+
+//find auto increment keys
+func findAI(cols []*column, pks []*column) *column {
+
+	for _, col := range cols {
+		if _, ok := col.settings["AI"]; ok {
+			return col
+		}
+	}
+
+	//fallback
+	if len(pks) == 1 {
+		return cols[0]
+	}
+	return nil
 }

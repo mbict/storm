@@ -1,4 +1,4 @@
-package storm2
+package storm
 
 import (
 	"database/sql"
@@ -82,7 +82,7 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 		t.Fatalf("Expected no error , but got `%v`", err)
 	}
 
-	expectedError = "Duplicate structure, 'storm2.testProduct' already exists"
+	expectedError = "Duplicate structure, 'storm.testProduct' already exists"
 	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
@@ -180,7 +180,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -265,7 +265,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -361,7 +361,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm2.testNonRegisteredStruct` found"
+	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
