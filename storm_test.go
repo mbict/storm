@@ -367,7 +367,6 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 	}
 }
 
-/*
 func TestStorm_CreateTable(t *testing.T) {
 	var (
 		err    error
@@ -429,7 +428,7 @@ func TestStorm_DropTable(t *testing.T) {
 		t.Fatalf("Table is not dropped")
 	}
 }
-*/
+
 
 //Test where passtrough
 func TestStorm_Where(t *testing.T) {
@@ -564,13 +563,12 @@ func TestStorm_generateUpdateSQL(t *testing.T) {
 	}
 }
 
-/*
 func TestStorm_generateCreateTableSQL(t *testing.T) {
 	s := newTestStorm()
 	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
 
 	sqlQuery := s.generateCreateTableSQL(tbl)
-	sqlExpected := "CREATE TABLE `testStructure` (`id` integer,`name` text)"
+	sqlExpected := "CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY,`name` TEXT)"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
@@ -587,4 +585,3 @@ func TestStorm_generateDropTableSQL(t *testing.T) {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
 }
-*/

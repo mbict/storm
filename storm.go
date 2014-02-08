@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/mbict/storm/dialect"
@@ -68,11 +69,43 @@ func (this *Storm) Begin() *Query {
 }
 
 func (this *Storm) CreateTable(i interface{}) error {
-	return nil
+	t := reflect.TypeOf(i)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return errors.New("Provided input is not a structure type")
+	}
+
+	//find the table
+	tbl, ok := this.getTable(t)
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+	}
+
+	_, err := this.db.Exec(this.generateCreateTableSQL(tbl))
+	return err
 }
 
 func (this *Storm) DropTable(i interface{}) error {
-	return nil
+	t := reflect.TypeOf(i)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return errors.New("Provided input is not a structure type")
+	}
+
+	//find the table
+	tbl, ok := this.getTable(t)
+	if !ok {
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+	}
+
+	_, err := this.db.Exec(this.generateDropTableSQL(tbl))
+	return err
 }
 
 func (this *Storm) RegisterStructure(i interface{}, name string) error {
@@ -90,7 +123,7 @@ func (this *Storm) RegisterStructure(i interface{}, name string) error {
 	defer this.tableLock.Unlock()
 
 	if _, exists := this.tables[t]; exists == true {
-		return errors.New(fmt.Sprintf("Duplicate structure, '%v' already exists", t.String()))
+		return errors.New(fmt.Sprintf("Duplicate structure, '%s' already exists", t))
 	}
 
 	this.tables[t] = newTable(reflect.Zero(t), name)
@@ -139,7 +172,7 @@ func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
 	//find the table
 	tbl, ok := this.getTable(v.Type())
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type().String()))
+		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
 	}
 
 	var (
@@ -263,11 +296,22 @@ func (this *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []int
 }
 
 func (this *Storm) generateCreateTableSQL(tbl *table) string {
-	return ""
+	var columns []string
+	for _, col := range tbl.columns {
+		column := reflect.Zero(col.goType).Interface()
+		params := ""
+		if tbl.aiColumn == col {
+			params = " " + this.dialect.SqlPrimaryKey(column, 0)
+		}
+
+		columns = append(columns, this.dialect.Quote(col.columnName)+" "+this.dialect.SqlType(column, 0)+params)
+	}
+
+	return fmt.Sprintf("CREATE TABLE %s (%s)", this.dialect.Quote(tbl.tableName), strings.Join(columns, ","))
 }
 
 func (this *Storm) generateDropTableSQL(tbl *table) string {
-	return ""
+	return fmt.Sprintf("DROP TABLE %s", this.dialect.Quote(tbl.tableName))
 }
 
 func (this *Storm) getTable(t reflect.Type) (tbl *table, ok bool) {
