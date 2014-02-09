@@ -16,8 +16,7 @@ const (
 )
 
 type Query struct {
-	storm  *Storm
-	tx     *sql.Tx
+	ctx    context
 	parent *Query
 
 	where  map[string][]interface{}
@@ -26,10 +25,9 @@ type Query struct {
 	limit  int
 }
 
-func newQuery(storm *Storm, parent *Query, tx *sql.Tx) *Query {
+func newQuery(ctx context, parent *Query) *Query {
 	return &Query{
-		storm:  storm,
-		tx:     tx,
+		ctx:    ctx,
 		parent: parent,
 		where:  make(map[string][]interface{}),
 		order:  make(map[string]SortDirection),
@@ -38,7 +36,7 @@ func newQuery(storm *Storm, parent *Query, tx *sql.Tx) *Query {
 
 //Returns a new query object
 func (this *Query) Query() *Query {
-	return newQuery(this.storm, this, nil)
+	return newQuery(this.ctx, this)
 }
 
 func (this *Query) Order(column string, direction SortDirection) *Query {
@@ -64,31 +62,21 @@ func (this *Query) Offset(offset int) *Query {
 func (this *Query) Find(i interface{}, where ...interface{}) error {
 
 	if len(where) >= 1 {
-		return this.Query().fetchRow(i, this.getContext(), where...)
+		return this.Query().fetchRow(i, this.ctx.DB(), where...)
 	}
-	return this.fetchRow(i, this.getContext())
+	return this.fetchRow(i, this.ctx.DB())
 }
 
 func (this *Query) Select(i interface{}) error {
-	return this.fetchAll(i, this.getContext())
+	return this.fetchAll(i, this.ctx.DB())
 }
 
 func (this *Query) SelectRow(i interface{}) error {
 	return this.Find(i)
 }
 
-func (this *Query) Count(*int64) error {
-	return nil
-}
-
-//begin a new transaction based on this query
-func (this *Query) Begin() *Transaction {
-	tx, err := this.storm.db.Begin()
-	if err != nil {
-		panic(err)
-	}
-
-	return newTransaction(this.Query(), tx)
+func (this *Query) Count(i interface{}) (int64, error) {
+	return 0, nil
 }
 
 //create additional where stements from arguments
@@ -101,7 +89,7 @@ func (this *Query) applyWhere(tbl *table, where ...interface{}) error {
 
 		if len(tbl.keys) == 1 {
 			if len(where) == 1 {
-				this.Where(fmt.Sprintf("%s = ?", this.storm.dialect.Quote(tbl.keys[0].columnName)), where...)
+				this.Where(fmt.Sprintf("%s = ?", this.ctx.Dialect().Quote(tbl.keys[0].columnName)), where...)
 			} else {
 				return errors.New("Not implemented having multiple pk values for find")
 			}
@@ -139,7 +127,7 @@ func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (
 	//}
 
 	//find the table
-	tbl, ok := this.storm.getTable(v.Type())
+	tbl, ok := this.ctx.table(v.Type())
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type().String()))
 	}
@@ -195,7 +183,7 @@ func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
 	}
 
 	//find the table
-	tbl, ok := this.storm.getTable(t)
+	tbl, ok := this.ctx.table(t)
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t.String()))
 	}
@@ -311,17 +299,4 @@ func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	}
 
 	return sql.String(), bindVars
-}
-
-//get the closest connection (session) or a common connection if none
-func (this *Query) getContext() (db sqlCommon) {
-	if this.tx != nil {
-		return this.tx
-	}
-
-	if this.parent == nil {
-		return this.storm.db
-	}
-
-	return this.parent.getContext()
 }

@@ -1,22 +1,41 @@
 package storm
 
-import "database/sql"
+import (
+	"database/sql"
+	"reflect"
+
+	"github.com/mbict/storm/dialect"
+)
 
 type Transaction struct {
-	query *Query
+	storm *Storm
 	tx    *sql.Tx
 }
 
-func newTransaction(query *Query, tx *sql.Tx) *Transaction {
+func newTransaction(s *Storm) *Transaction {
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		panic(err)
+	}
+
 	return &Transaction{
-		query: query,
+		storm: s,
 		tx:    tx,
 	}
 }
 
+func (this *Transaction) DB() sqlCommon {
+	return this.tx
+}
+
+func (this *Transaction) Dialect() dialect.Dialect {
+	return this.storm.Dialect()
+}
+
 // create a new query subobject
-func (this *Transaction) Query() *Transaction {
-	return newTransaction(this.query.Query(), this.tx)
+func (this *Transaction) Query() *Query {
+	return newQuery(this, nil)
 }
 
 func (this *Transaction) Order(column string, direction SortDirection) *Query {
@@ -36,27 +55,27 @@ func (this *Transaction) Offset(offset int) *Query {
 }
 
 func (this *Transaction) Find(i interface{}, where ...interface{}) error {
-	return this.query.fetchRow(i, this.tx)
+	return this.Query().fetchRow(i, this.tx, where...)
 }
 
 func (this *Transaction) Delete(i interface{}) error {
-	return this.query.storm.deleteEntity(i, this.tx)
+	return this.storm.deleteEntity(i, this.tx)
 }
 
 func (this *Transaction) Save(i interface{}) error {
-	return this.query.storm.saveEntity(i, this.tx)
+	return this.storm.saveEntity(i, this.tx)
 }
 
 func (this *Transaction) Select(i []interface{}) error {
-	return this.query.fetchAll(i, this.tx)
+	return this.Query().fetchAll(i, this.tx)
 }
 
 func (this *Transaction) SelectRow(i interface{}) error {
 	return this.Find(i)
 }
 
-func (this *Transaction) Count(*int64) error {
-	return nil
+func (this *Transaction) Count(i interface{}) (int64, error) {
+	return this.Query().Count(i)
 }
 
 // commit transaction
@@ -67,4 +86,8 @@ func (this *Transaction) Commit() error {
 // rollback the transaction
 func (this *Transaction) Rollback() error {
 	return this.tx.Rollback()
+}
+
+func (this *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
+	return this.storm.table(t)
 }

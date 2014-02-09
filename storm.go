@@ -12,6 +12,12 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
+type context interface {
+	DB() sqlCommon
+	Dialect() dialect.Dialect
+	table(t reflect.Type) (tbl *table, ok bool)
+}
+
 type Storm struct {
 	db        *sql.DB
 	dialect   dialect.Dialect
@@ -28,12 +34,16 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 	}, err
 }
 
-func (this *Storm) DB() *sql.DB {
+func (this *Storm) DB() sqlCommon {
 	return this.db
 }
 
+func (this *Storm) Dialect() dialect.Dialect {
+	return this.dialect
+}
+
 func (this *Storm) Query() *Query {
-	return newQuery(this, nil, nil)
+	return newQuery(this, nil)
 }
 
 func (this *Storm) Order(column string, direction SortDirection) *Query {
@@ -64,8 +74,8 @@ func (this *Storm) Save(i interface{}) error {
 	return this.saveEntity(i, this.db)
 }
 
-func (this *Storm) Begin() *Query {
-	return nil
+func (this *Storm) Begin() *Transaction {
+	return newTransaction(this)
 }
 
 func (this *Storm) CreateTable(i interface{}) error {
@@ -79,7 +89,7 @@ func (this *Storm) CreateTable(i interface{}) error {
 	}
 
 	//find the table
-	tbl, ok := this.getTable(t)
+	tbl, ok := this.table(t)
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
 	}
@@ -89,6 +99,7 @@ func (this *Storm) CreateTable(i interface{}) error {
 }
 
 func (this *Storm) DropTable(i interface{}) error {
+
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -99,7 +110,7 @@ func (this *Storm) DropTable(i interface{}) error {
 	}
 
 	//find the table
-	tbl, ok := this.getTable(t)
+	tbl, ok := this.table(t)
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
 	}
@@ -139,7 +150,7 @@ func (this *Storm) deleteEntity(i interface{}, db sqlCommon) (err error) {
 	}
 
 	//find the table
-	tbl, ok := this.getTable(v.Type())
+	tbl, ok := this.table(v.Type())
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
 	}
@@ -170,7 +181,7 @@ func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
 	}
 
 	//find the table
-	tbl, ok := this.getTable(v.Type())
+	tbl, ok := this.table(v.Type())
 	if !ok {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
 	}
@@ -314,7 +325,7 @@ func (this *Storm) generateDropTableSQL(tbl *table) string {
 	return fmt.Sprintf("DROP TABLE %s", this.dialect.Quote(tbl.tableName))
 }
 
-func (this *Storm) getTable(t reflect.Type) (tbl *table, ok bool) {
+func (this *Storm) table(t reflect.Type) (tbl *table, ok bool) {
 
 	this.tableLock.RLock()
 	defer this.tableLock.RUnlock()

@@ -104,7 +104,7 @@ func TestQuery_generateSelect(t *testing.T) {
 
 	s := newTestStorm()
 	q := s.Query()
-	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
+	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
 
 	//simple empty select
 	sqlQuery, bind := q.generateSelectSQL(tbl)

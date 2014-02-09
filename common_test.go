@@ -33,7 +33,7 @@ func assertEntity(actual *testStructure, expected *testStructure) error {
 	return nil
 }
 
-func assertTableExist(table string, db *sql.DB) (result int, err error) {
+func assertTableExist(table string, db sqlCommon) (result int, err error) {
 
 	//sqlite3 way
 	res := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='` + table + `'`)

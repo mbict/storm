@@ -110,7 +110,7 @@ func TestStorm_Find(t *testing.T) {
 	}
 
 	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
-		t.Fatalf("Error: %v",err)
+		t.Fatalf("Error: %v", err)
 	}
 
 	//find by string
@@ -120,7 +120,7 @@ func TestStorm_Find(t *testing.T) {
 	}
 
 	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
-		t.Fatalf("Error: %v",err)
+		t.Fatalf("Error: %v", err)
 	}
 
 	//find by query bind string (shorthand for query)
@@ -130,7 +130,7 @@ func TestStorm_Find(t *testing.T) {
 	}
 
 	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
-		t.Fatalf("Error: %v",err)
+		t.Fatalf("Error: %v", err)
 	}
 
 	//find by multiple bind string (shorthand for query)
@@ -140,7 +140,7 @@ func TestStorm_Find(t *testing.T) {
 	}
 
 	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
-		t.Fatalf("Error: %v",err)
+		t.Fatalf("Error: %v", err)
 	}
 }
 
@@ -205,7 +205,7 @@ func TestStorm_Delete(t *testing.T) {
 	}
 
 	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
-	if err = res.Scan( &input.Id, &input.Name ); err != sql.ErrNoRows {
+	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		if err == nil {
 			t.Fatalf("Record not deleted")
 		}
@@ -270,7 +270,6 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 }
-
 
 func TestStorm_Save(t *testing.T) {
 
@@ -429,7 +428,6 @@ func TestStorm_DropTable(t *testing.T) {
 	}
 }
 
-
 //Test where passtrough
 func TestStorm_Where(t *testing.T) {
 	var (
@@ -469,8 +467,8 @@ func TestStorm_Order(t *testing.T) {
 //Test limit passtrough
 func TestStorm_Limit(t *testing.T) {
 	var (
-		s  = newTestStorm()
-		q  = s.Limit(123)
+		s = newTestStorm()
+		q = s.Limit(123)
 	)
 
 	if q.limit != 123 {
@@ -481,8 +479,8 @@ func TestStorm_Limit(t *testing.T) {
 //Test offset passtrough
 func TestStorm_Offset(t *testing.T) {
 	var (
-		s  = newTestStorm()
-		q  = s.Offset(123)
+		s = newTestStorm()
+		q = s.Offset(123)
 	)
 
 	if q.offset != 123 {
@@ -496,7 +494,7 @@ func TestStorm_Offset(t *testing.T) {
 func TestStorm_generateDeleteSql(t *testing.T) {
 	s := newTestStorm()
 	entity := testStructure{1, "test"}
-	tbl, _ := s.getTable(reflect.TypeOf(entity))
+	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 
 	sqlQuery, bind := s.generateDeleteSQL(v, tbl)
@@ -518,7 +516,7 @@ func TestStorm_generateDeleteSql(t *testing.T) {
 func TestStorm_generateInsertSQL(t *testing.T) {
 	s := newTestStorm()
 	entity := testStructure{0, "test"}
-	tbl, _ := s.getTable(reflect.TypeOf(entity))
+	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 
 	sqlQuery, bind := s.generateInsertSQL(v, tbl)
@@ -540,7 +538,7 @@ func TestStorm_generateInsertSQL(t *testing.T) {
 func TestStorm_generateUpdateSQL(t *testing.T) {
 	s := newTestStorm()
 	entity := testStructure{2, "test"}
-	tbl, _ := s.getTable(reflect.TypeOf(entity))
+	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 
 	sqlQuery, bind := s.generateUpdateSQL(v, tbl)
@@ -565,7 +563,7 @@ func TestStorm_generateUpdateSQL(t *testing.T) {
 
 func TestStorm_generateCreateTableSQL(t *testing.T) {
 	s := newTestStorm()
-	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
+	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
 
 	sqlQuery := s.generateCreateTableSQL(tbl)
 	sqlExpected := "CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY,`name` TEXT)"
@@ -574,10 +572,9 @@ func TestStorm_generateCreateTableSQL(t *testing.T) {
 	}
 }
 
-
 func TestStorm_generateDropTableSQL(t *testing.T) {
 	s := newTestStorm()
-	tbl, _ := s.getTable(reflect.TypeOf((*testStructure)(nil)).Elem())
+	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
 
 	sqlQuery := s.generateDropTableSQL(tbl)
 	sqlExpected := "DROP TABLE `testStructure`"
