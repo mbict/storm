@@ -149,3 +149,7 @@ func TestTable_FindPKs(t *testing.T) {
 	}
 
 }
+
+func TestTable_FindAI(t *testing.T) {
+	//todo
+}

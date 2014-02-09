@@ -488,6 +488,18 @@ func TestStorm_Offset(t *testing.T) {
 	}
 }
 
+//Test Begin
+func TestStorm_Begin(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		tx = s.Begin()
+	)
+
+	if tx.DB() == s.DB() {
+		t.Fatalf("Expected to get a unique connection diffrent from storm db, but both connections match")
+	}
+}
+
 //--------------------------------------
 // SQL helpers
 //--------------------------------------

@@ -1,5 +1,5 @@
 package storm
-/*
+
 import "testing"
 
 
@@ -68,4 +68,3 @@ func TestTransaction_Offset(t *testing.T) {
 		t.Fatalf("Expected offset value of 123 but got %d", q.offset)
 	}
 }
-*/
