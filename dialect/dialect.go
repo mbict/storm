@@ -1,8 +1,6 @@
 package dialect
 
-import (
-	"database/sql"
-)
+import "database/sql"
 
 type Dialect interface {
 	InsertAutoIncrement(stmt *sql.Stmt, bind ...interface{}) (int64, error)

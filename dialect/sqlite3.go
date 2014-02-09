@@ -16,22 +16,22 @@ func (*sqlite3) InsertAutoIncrement(stmt *sql.Stmt, bind ...interface{}) (int64,
 func (*sqlite3) SqlType(column interface{}, size int) string {
 	switch column.(type) {
 	case time.Time:
-		return "datetime"
+		return "DATETIME"
 	case bool, sql.NullBool:
-		return "bool"
+		return "BOOL"
 	case int, int8, int16, int32, uint, uint8, uint16, uint32:
-		return "integer"
+		return "INTEGER"
 	case int64, uint64, sql.NullInt64:
-		return "bigint"
+		return "BIGINT"
 	case float32, float64, sql.NullFloat64:
-		return "real"
+		return "REAL"
 	case []byte:
-		return "blob"
+		return "BLOB"
 	case string, sql.NullString:
 		if size > 0 && size < 65532 {
-			return fmt.Sprintf("varchar(%d)", size)
+			return fmt.Sprintf("VARCHAR(%d)", size)
 		} else {
-			return "text"
+			return "TEXT"
 		}
 	default:
 		panic(fmt.Sprintf("Invalid sql type for sqlite3 (%v)", column))
@@ -39,7 +39,13 @@ func (*sqlite3) SqlType(column interface{}, size int) string {
 }
 
 func (*sqlite3) SqlPrimaryKey(column interface{}, size int) string {
-	return "INTEGER PRIMARY KEY"
+	switch column.(type) {
+	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64:
+		return "PRIMARY KEY"
+	default:
+		panic("Invalid primary key type")
+	}
+
 }
 
 func (*sqlite3) Quote(key string) string {

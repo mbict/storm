@@ -17,26 +17,26 @@ func (*mysql) SqlType(column interface{}, size int) string {
 
 	switch column.(type) {
 	case time.Time:
-		return "datetime"
+		return "DATETIME"
 	case bool, sql.NullBool:
-		return "boolean"
+		return "BOOLEAN"
 	case int, int8, int16, int32, uint, uint8, uint16, uint32:
-		return "int"
+		return "INT"
 	case int64, uint64, sql.NullInt64:
-		return "bigint"
+		return "BIGINT"
 	case float32, float64, sql.NullFloat64:
-		return "double"
+		return "DOUBLE"
 	case []byte:
 		if size > 0 && size < 65532 {
-			return fmt.Sprintf("varbinary(%d)", size)
+			return fmt.Sprintf("VARBINARY(%d)", size)
 		} else {
-			return "longblob"
+			return "LONGBLOB"
 		}
 	case string, sql.NullString:
 		if size > 0 && size < 65532 {
-			return fmt.Sprintf("varchar(%d)", size)
+			return fmt.Sprintf("VARCHAR(%d)", size)
 		} else {
-			return "longtext"
+			return "LONGTEXT"
 		}
 	default:
 		panic(fmt.Sprintf("Invalid sql type for mysql (%v)", column))
@@ -44,12 +44,9 @@ func (*mysql) SqlType(column interface{}, size int) string {
 }
 
 func (*mysql) SqlPrimaryKey(column interface{}, size int) string {
-	suffix_str := " NOT NULL AUTO_INCREMENT PRIMARY KEY"
 	switch column.(type) {
-	case int, int8, int16, int32, uint, uint8, uint16, uint32:
-		return "int" + suffix_str
-	case int64, uint64:
-		return "bigint" + suffix_str
+	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64:
+		return "NOT NULL AUTO_INCREMENT PRIMARY KEY"
 	default:
 		panic("Invalid primary key type")
 	}
