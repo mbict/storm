@@ -99,6 +99,37 @@ func TestQuery_Select(t *testing.T) {
 	}
 }
 
+func TestQuery_Count(t *testing.T) {
+	var (
+		err error
+		cnt int64
+		s   = newTestStorm()
+	)
+
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2')")
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (3, 'name 3')")
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (4, 'name 4')")
+
+	//empty result, no match PTR
+	if cnt, err = s.Query().Where("id > ?", 999).Count((*testStructure)(nil)); err != nil {
+		t.Fatalf("Got wrong error back, expected `%v` but got `%v`", sql.ErrNoRows, err)
+	}
+
+	if cnt != 0 {
+		t.Fatalf("Expected a 0 count but got %d", cnt)
+	}
+
+	//find by id PTR
+	if cnt, err = s.Query().Where("id > ?", 1).Count((*testStructure)(nil)); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if cnt != 3 {
+		t.Fatalf("Expected a 3 count but got %d", cnt)
+	}
+}
+
 //helper tests
 func TestQuery_generateSelect(t *testing.T) {
 
@@ -134,6 +165,46 @@ func TestQuery_generateSelect(t *testing.T) {
 	}
 
 	sqlExpected = "SELECT `id`, `name` FROM `testStructure` WHERE id = ? AND name = ? ORDER BY `id` ASC, `name` DESC LIMIT 10 OFFSET 5"
+	if sql != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
+	}
+}
+
+
+func TestQuery_generateCount(t *testing.T) {
+
+	s := newTestStorm()
+	q := s.Query()
+	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+
+	//simple empty select
+	sqlQuery, bind := q.generateCountSQL(tbl)
+
+	if len(bind) != 0 {
+		t.Errorf("Expected to get 0 columns to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected := "SELECT COUNT(*) FROM `testStructure`"
+	if sqlQuery != sqlExpected {
+		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
+	}
+
+	//where/limit/offset/order/order test
+	q = s.Query()
+	q.Where("id = ?", 1).
+		Where("name = ?", "test").
+		Limit(10).
+		Offset(5).
+		Order("id", ASC).
+		Order("name", DESC)
+
+	sql, bind := q.generateCountSQL(tbl)
+
+	if len(bind) != 2 {
+		t.Errorf("Expected to get 2 columns to bind but got %v columns back", len(bind))
+	}
+
+	sqlExpected = "SELECT COUNT(*) FROM `testStructure` WHERE id = ? AND name = ?"
 	if sql != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sql)
 	}

@@ -34,10 +34,13 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 	}, err
 }
 
+
+//get the connection context
 func (this *Storm) DB() sqlCommon {
 	return this.db
 }
 
+//get the current dialect used by the connection
 func (this *Storm) Dialect() dialect.Dialect {
 	return this.dialect
 }

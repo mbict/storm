@@ -25,10 +25,13 @@ func newTransaction(s *Storm) *Transaction {
 	}
 }
 
+//get the connection context
 func (this *Transaction) DB() sqlCommon {
 	return this.tx
 }
 
+
+//get the current dialect used by the connection
 func (this *Transaction) Dialect() dialect.Dialect {
 	return this.storm.Dialect()
 }

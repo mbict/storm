@@ -76,7 +76,7 @@ func (this *Query) SelectRow(i interface{}) error {
 }
 
 func (this *Query) Count(i interface{}) (int64, error) {
-	return 0, nil
+	return this.fetchCount(i, this.ctx.DB())
 }
 
 //create additional where stements from arguments
@@ -101,6 +101,40 @@ func (this *Query) applyWhere(tbl *table, where ...interface{}) error {
 	}
 
 	return nil
+}
+
+//fetch a single row into a element
+func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error) {
+	t := reflect.TypeOf(i)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return 0, errors.New("Provided input is not a structure type")
+	}
+
+	//find the table
+	tbl, ok := this.ctx.table(t)
+	if !ok {
+		return 0, errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+	}
+
+	//generate sql and prepare
+	sqlQuery, bind := this.generateCountSQL(tbl)
+	stmt, err := db.Prepare(sqlQuery)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	//query the row
+	row := stmt.QueryRow(bind...)
+
+	//create destination and scan
+
+	err = row.Scan(&cnt)
+	return cnt, err
 }
 
 //fetch a single row into a element
@@ -296,6 +330,36 @@ func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	//add offset
 	if this.offset > 0 {
 		sql.WriteString(fmt.Sprintf(" OFFSET %d", this.offset))
+	}
+
+	return sql.String(), bindVars
+}
+
+func (this *Query) generateCountSQL(tbl *table) (string, []interface{}) {
+
+	var bindVars []interface{}
+	var sql bytes.Buffer
+	var pos int
+
+	//add table name
+	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM %s", this.ctx.Dialect().Quote(tbl.tableName)))
+
+	//add where
+	if len(this.where) > 0 {
+
+		sql.WriteString(" WHERE ")
+
+		//create where keys
+		pos = 0
+		for cond, attr := range this.where {
+			if pos > 0 {
+				sql.WriteString(" AND ")
+			}
+			sql.WriteString(cond)
+
+			bindVars = append(bindVars, attr...)
+			pos++
+		}
 	}
 
 	return sql.String(), bindVars
