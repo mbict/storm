@@ -17,8 +17,6 @@ const (
 
 type Query struct {
 	ctx    context
-	parent *Query
-
 	where  map[string][]interface{}
 	order  map[string]SortDirection
 	offset int
@@ -26,12 +24,33 @@ type Query struct {
 }
 
 func newQuery(ctx context, parent *Query) *Query {
-	return &Query{
+
+	q := Query{
 		ctx:    ctx,
-		parent: parent,
-		where:  make(map[string][]interface{}),
-		order:  make(map[string]SortDirection),
+		offset: -1,
+		limit:  -1,
 	}
+
+	if parent != nil {
+		//clone parent
+		q.where = make(map[string][]interface{}, len(parent.where))
+		for k, v := range parent.where {
+			q.where[k] = v
+		}
+
+		q.order = make(map[string]SortDirection, len(parent.order))
+		for k, v := range parent.order {
+			q.order[k] = v
+		}
+		q.offset = parent.offset
+		q.limit = parent.limit
+	} else {
+		q.where = make(map[string][]interface{}, 0)
+		q.order = make(map[string]SortDirection, 0)
+	}
+
+	return &q
+
 }
 
 //Returns a new query object
