@@ -99,7 +99,7 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 func findPKs(cols []*column) (pks []*column) {
 
 	for _, col := range cols {
-		if _, ok := col.settings["pk"]; ok {
+		if _, ok := col.settings["pk"]; ok && col.goType.Kind() == reflect.Int {
 			pks = append(pks, col)
 		}
 	}
@@ -124,14 +124,14 @@ func findPKs(cols []*column) (pks []*column) {
 func findAI(cols []*column, pks []*column) *column {
 
 	for _, col := range cols {
-		if _, ok := col.settings["AI"]; ok {
+		if _, ok := col.settings["ai"]; ok && col.goType.Kind() == reflect.Int {
 			return col
 		}
 	}
 
 	//fallback
 	if len(pks) == 1 {
-		return cols[0]
+		return pks[0]
 	}
 	return nil
 }

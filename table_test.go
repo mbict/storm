@@ -128,28 +128,126 @@ func TestTable_ExtractStructColumns_EmbeddedStruct(t *testing.T) {
 
 func TestTable_FindPKs(t *testing.T) {
 
-	//find pk with struct tag PK
-	pks := findPKs(extractStructColumns(reflect.ValueOf(testStructureWithTags{}), nil))
-	if len(pks) != 1 {
-		t.Fatalf("Expected to get 1 column back but got %v", len(pks))
+	cai := &column{
+		columnName: "a",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
 	}
 
-	if pks[0].columnName != "xId" {
-		t.Fatalf("Expected primary to be %v but got %v", "xId", pks[0].columnName)
+	cid := &column{
+		columnName: "id",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
 	}
 
-	//fallback fist id field of type int
-	pks = findPKs(extractStructColumns(reflect.ValueOf(testProduct{}), nil))
-	if len(pks) != 1 {
-		t.Fatalf("Expected to get 1 column back but got %v", len(pks))
+	cfid := &column{
+		columnName: "id",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(string("test")),
 	}
 
-	if pks[0].columnName != "id" {
-		t.Fatalf("Expected primary to be %v but got %v", "id", pks[0].columnName)
+	cpk := &column{
+		columnName: "id",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
+	}
+	cpk.settings["pk"] = "pk"
+
+	cfpk := &column{
+		columnName: "xId",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(string("test")),
+	}
+	cfpk.settings["pk"] = "pk"
+
+	cdmmy := &column{
+		columnName: "dummy1",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
 	}
 
+	//no match
+	col := findPKs([]*column{cdmmy, cfid, cai})
+	if len(col) > 0 {
+		t.Errorf("Expected to get no matches but got %d matches", len(col))
+	}
+
+	//1 match on pk key
+	col = findPKs([]*column{cai, cfpk, cdmmy, cpk, cfid, cid, cai})
+	if len(col) != 1 {
+		t.Errorf("Expected to get 1 match but got %d matches `%v`", len(col), col[0])
+	} else if col[0] != cpk {
+		t.Errorf("Expected to get column `%v` but got `%v` column", cpk, col[0])
+	}
+
+	//2 matches on pk key
+	col = findPKs([]*column{cai, cfpk, cpk, cdmmy, cpk, cfid, cid, cai})
+	if len(col) != 2 {
+		t.Errorf("Expected to get 2 match but got %d matches", len(col))
+	} else if col[0] != cpk || col[1] != cpk {
+		t.Errorf("Expected to get column `%v` but got `%v` and `%v` column", cpk, col[0], col[1])
+	}
+
+	//1 auto match on id name
+	col = findPKs([]*column{cai, cfpk, cdmmy, cfid, cid})
+	if len(col) != 1 {
+		t.Errorf("Expected to get 1 match but got %d matches", len(col))
+	} else if col[0] != cid {
+		t.Errorf("Expected to get column `%v` but got `%v` column", cid, col[0])
+	}
 }
 
 func TestTable_FindAI(t *testing.T) {
-	//todo
+
+	cai := &column{
+		columnName: "a",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
+	}
+	cai.settings["ai"] = "ai"
+
+	cfai := &column{
+		columnName: "a",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(string("test")),
+	}
+	cfai.settings["ai"] = "ai"
+
+	cid := &column{
+		columnName: "id",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(int(1)),
+	}
+	cid.settings["pk"] = "pk"
+
+	cdmmy1 := &column{
+		columnName: "dummy1",
+		settings:   make(map[string]string),
+		goType:     reflect.TypeOf(string("test")),
+	}
+
+	//no match
+	col := findAI([]*column{cfai, cdmmy1, cid}, nil)
+	if col != nil {
+		t.Errorf("Expected to get no match '%v'", col)
+	}
+
+	//found ai
+	col = findAI([]*column{cdmmy1, cai, cid}, nil)
+	if col != cai {
+		t.Errorf("Expected to get a match with '%v' but got a match on `%v`", cai, col)
+	}
+
+	//fallback on pk
+	col = findAI([]*column{cdmmy1, cid, cdmmy1}, []*column{cid})
+	if col != cid {
+		t.Errorf("Expected to get a match with '%v' but got a match on `%v`", cid, col)
+	}
+
+	//no match multiple pks
+	col = findAI([]*column{cdmmy1, cid, cdmmy1}, []*column{cid, cid})
+	if col != nil {
+		t.Errorf("Expected to get no match '%v'", col)
+	}
+
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/ioutil"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -14,9 +15,35 @@ type testStructure struct {
 }
 
 func newTestStorm() *Storm {
-	s, _ := Open(`sqlite3`, `:memory:`)
+	s, err := Open(`sqlite3`, `:memory:`)
+	if err != nil {
+		panic(err)
+	}
+	
 	s.RegisterStructure((*testStructure)(nil), `testStructure`)
+	s.db.Exec("DROP TABLE `testStructure`")
 	s.db.Exec("CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	s.db.SetMaxIdleConns(10)
+	s.db.SetMaxOpenConns(10)
+
+	return s
+}
+
+func newTestStormFile() *Storm {
+	
+	//create unique temporary datastore 
+	tmp, err := ioutil.TempFile("", "storm_test.sqlite_")
+	if err != nil {
+		panic(err)
+	}
+	tmp.Close()
+
+	s, _ := Open(`sqlite3`, `file:`+tmp.Name()+`?mode=rwc`)
+	s.RegisterStructure((*testStructure)(nil), `testStructure`)
+	s.db.Exec("DROP TABLE `testStructure`")
+	s.db.Exec("CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	s.db.SetMaxIdleConns(10)
+	s.db.SetMaxOpenConns(10)
 
 	return s
 }

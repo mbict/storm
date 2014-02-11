@@ -34,7 +34,6 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 	}, err
 }
 
-
 //get the connection context
 func (this *Storm) DB() sqlCommon {
 	return this.db
