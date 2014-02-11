@@ -10,7 +10,6 @@ Storm stands for **ST**ructure **O**riented **R**elation **M**odel
 Usage
 =====
 
-
 **Create a repository and add a structure**
 ```GO
 //example structure
@@ -27,58 +26,84 @@ repo.AddStructure(Customer{}, "customer")
 
 **Create a storm instance**
 ```GO
-db, err := sql.Open("sqlite3", ":memory:")
+s, err := storm.Open("sqlite3", ":memory:")
 if err != nil {
 	panic("Cannot open database")
 }
-
-storm := NewStorm(db, respository)
 ```
 
+**Add a structure**
+```GO
+//example structure
+type Customer struct {
+	Id               int    `db:"name(id),pk"
+	Firstname	     string 
+	Lastname	     string
+	Hidden           string `db:"ignore"
+}
+
+s.AddStructure(Customer{}, "customer")
+s.AddStructure((*Customer)(nil), "customer")
+```
 **Insert a new entity**
 
 Pass the new structure and leave all pks zero
 After a successful save all pks will be filled
 ```GO
 newCustomer := Customer{0, "Firstname", "Lastname"}
-err := storm.Save(&newCustomer)
+err := s.Save(&newCustomer)
 ```
 
 **Get one entity by its primary key**
 ```GO
-obj, err := storm.Get("customer", 1)
-
-//convert to structure
-customer, ok := obj.(*Customer)
+var customer Customer
+obj, err := s.Fin(&customer, 1)
 ```
 
 **Update a entity**
 ```GO
 customer.Lastname = "LastlastName"
-err := storm.Save(&customer)
+err := s.Save(&customer)
 ```
 
 **Delete a entity**
 ```GO
-err := storm.Delete(&customer)
+err := s.Delete(&customer)
 ```
 
 **Get all the enties method 1**
 ```GO
-query, err := storm.Query("customer")
+q := s.Query()
 var customers []Customer
-_, err := query.Where("name LIKE ?", "%test%").Select(&customers)
+_, err := q.Where("name LIKE ?", "%test%").Select(&customers)
 ```
 
-**Get all the enties method 2**
-```GO
-query, err := storm.Query("customer")
-var data []interface{}
-data, err := query.Where("name LIKE ?", "%test%").Select()
-```
+
 
 **Get the count**
 ```GO
-query, err := storm.Query("customer")
-count, err := query.Where("name LIKE ?", "%test%").Count()
+q := s.Query()
+count, err := q.Where("name LIKE ?", "%test%").Count((*Customer)(nil))
+```
+
+
+**Start transaction, commit or rollback**
+```GO
+tx := s.Begin()
+tx.Save(...... etc
+tx.Commit()
+or
+tx.Rollback()
+```
+
+
+**Create table**
+```GO
+s.CreateTable((*Customer)(nil))
+```
+
+
+**Drop table**
+```GO
+s.DropTable((*Customer)(nil))
 ```
