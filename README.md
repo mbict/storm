@@ -10,7 +10,7 @@ Storm stands for **ST**ructure **O**riented **R**elation **M**odel
 Usage
 =====
 
-**Create a repository and add a structure**
+**Create a storm instance and add a structure**
 ```GO
 //example structure
 type Customer struct {
@@ -20,31 +20,11 @@ type Customer struct {
 	Hidden           string `db:"ignore"
 }
 
-repository := NewRepository(&SqliteDialect{})
-repo.AddStructure(Customer{}, "customer")
-```
-
-**Create a storm instance**
-```GO
 s, err := storm.Open("sqlite3", ":memory:")
-if err != nil {
-	panic("Cannot open database")
-}
-```
-
-**Add a structure**
-```GO
-//example structure
-type Customer struct {
-	Id               int    `db:"name(id),pk"
-	Firstname	     string 
-	Lastname	     string
-	Hidden           string `db:"ignore"
-}
-
 s.AddStructure(Customer{}, "customer")
 s.AddStructure((*Customer)(nil), "customer")
 ```
+
 **Insert a new entity**
 
 Pass the new structure and leave all pks zero
