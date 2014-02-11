@@ -19,7 +19,7 @@ func newTestStorm() *Storm {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	s.RegisterStructure((*testStructure)(nil), `testStructure`)
 	s.db.Exec("DROP TABLE `testStructure`")
 	s.db.Exec("CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
@@ -30,8 +30,8 @@ func newTestStorm() *Storm {
 }
 
 func newTestStormFile() *Storm {
-	
-	//create unique temporary datastore 
+
+	//create unique temporary datastore
 	tmp, err := ioutil.TempFile("", "storm_test.sqlite_")
 	if err != nil {
 		panic(err)

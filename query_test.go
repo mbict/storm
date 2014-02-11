@@ -170,7 +170,6 @@ func TestQuery_generateSelect(t *testing.T) {
 	}
 }
 
-
 func TestQuery_generateCount(t *testing.T) {
 
 	s := newTestStorm()

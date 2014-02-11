@@ -25,7 +25,7 @@ func newTable(v reflect.Value, name string) *table {
 	//read the structure
 	cols := extractStructColumns(v, nil)
 	pks := findPKs(cols)
-	
+
 	//create the table structure
 	return &table{
 		tableName: name,

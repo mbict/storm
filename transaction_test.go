@@ -150,30 +150,28 @@ func TestTransaction_Save(t *testing.T) {
 	tx1.tx.Rollback()
 }
 
-
 func TestTransaction_Find(t *testing.T) {
 	var (
 		err   error
 		input *testStructure = nil
 		s                    = newTestStormFile()
-		tx1 *Transaction = s.Begin()
+		tx1   *Transaction   = s.Begin()
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
 
-	
 	//find by id (transaction)
 	input = nil
 	if err = tx1.Find(&input, 1); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
-	
+
 	//find by id
 	input = nil
 	if err = tx1.Find(&input, 2); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
-	
+
 	//find by id (transaction)
 	input = nil
 	if err = s.Find(&input, 2); err != sql.ErrNoRows {
@@ -185,16 +183,15 @@ func TestTransaction_Find(t *testing.T) {
 }
 
 func TestTransaction_Delete(t *testing.T) {
-		var (
+	var (
 		err   error
-		input *testStructure = &testStructure{2,"name delete"}
+		input *testStructure = &testStructure{2, "name delete"}
 		s                    = newTestStormFile()
-		tx1 *Transaction = s.Begin()
-		res *sql.Row
+		tx1   *Transaction   = s.Begin()
+		res   *sql.Row
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name delete')")
-
 
 	//normal
 	if err = tx1.Delete(input); err != nil {
@@ -208,9 +205,67 @@ func TestTransaction_Delete(t *testing.T) {
 		}
 		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
 	}
-	
+
 	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 2)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row but got error %v", err)
+	}
+}
+
+func TestTransaction_Commit(t *testing.T) {
+
+	var (
+		err   error
+		input *testStructure = &testStructure{}
+		s                    = newTestStormFile()
+		res   *sql.Row
+		tx1   = s.Begin()
+	)
+
+	//update a existing entity
+	_, err = tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	if err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	err = tx1.Commit()
+	if err != nil {
+		t.Fatalf("Error while commit got error `%v`", err)
+	}
+
+	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	if err = res.Scan(&input.Id, &input.Name); err != nil {
+		t.Fatalf("Expected to get a row back but got error %v", err)
+	}
+
+	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+		t.Fatalf("Entity mismatch : %v", err)
+	}
+}
+
+func TestTransaction_Rollback(t *testing.T) {
+
+	var (
+		err   error
+		input *testStructure = &testStructure{}
+		s                    = newTestStormFile()
+		res   *sql.Row
+		tx1   = s.Begin()
+	)
+
+	//update a existing entity
+	_, err = tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	if err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	err = tx1.Rollback()
+	if err != nil {
+		t.Fatalf("Error while commit got error `%v`", err)
+	}
+
+	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
+		t.Fatalf("Expected to get a error back no rows found but got something else %v", err)
 	}
 }

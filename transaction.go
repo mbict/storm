@@ -30,7 +30,6 @@ func (this *Transaction) DB() sqlCommon {
 	return this.tx
 }
 
-
 //get the current dialect used by the connection
 func (this *Transaction) Dialect() dialect.Dialect {
 	return this.storm.Dialect()
@@ -67,18 +66,6 @@ func (this *Transaction) Delete(i interface{}) error {
 
 func (this *Transaction) Save(i interface{}) error {
 	return this.storm.saveEntity(i, this.tx)
-}
-
-func (this *Transaction) Select(i []interface{}) error {
-	return this.Query().fetchAll(i, this.tx)
-}
-
-func (this *Transaction) SelectRow(i interface{}) error {
-	return this.Find(i)
-}
-
-func (this *Transaction) Count(i interface{}) (int64, error) {
-	return this.Query().Count(i)
 }
 
 // commit transaction
