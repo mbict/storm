@@ -5,10 +5,13 @@ import (
 	"testing"
 )
 
+type overrideTestToInt int
+
 type testStructureWithTags struct {
-	Id               int    `db:"name(xId),pk" json:"id"`
-	Name             string `json:"name"`
-	Hidden           string `db:"ignore" json:"-"`
+	Id               int               `db:"name(xId),pk" json:"id"`
+	Name             string            `json:"name"`
+	SnakeId          overrideTestToInt `db:"type(int)"`
+	Hidden           string            `db:"ignore" json:"-"`
 	localNotExported int
 }
 
@@ -53,7 +56,6 @@ func TestTable_ParseTags(t *testing.T) {
 	if tags["name"] != "abc" {
 		t.Fatalf("Expected tag name have the value 'abc', instead i got %s", tags["name"])
 	}
-
 }
 
 func TestTable_ExtractStructColumns_Tags(t *testing.T) {
@@ -61,8 +63,8 @@ func TestTable_ExtractStructColumns_Tags(t *testing.T) {
 	columns := extractStructColumns(reflect.ValueOf(testStructureWithTags{}), nil)
 
 	//check the column count, ignoring 1 column
-	if len(columns) != 2 {
-		t.Fatalf("Expected to have 2 columns in the structure, got %d columns", len(columns))
+	if len(columns) != 3 {
+		t.Fatalf("Expected to have 3 columns in the structure, got %d columns", len(columns))
 	}
 
 	//column name should be read from the tag name(xId)
@@ -75,6 +77,11 @@ func TestTable_ExtractStructColumns_Tags(t *testing.T) {
 		t.Errorf("Expected column name 'name', got '%s'", columns[1].columnName)
 	}
 
+	//column name should be lower case based on the structure name
+	if columns[2].columnName != "snake_id" {
+		t.Errorf("Expected column name 'snake_id', got '%s'", columns[2].columnName)
+	}
+
 	//check type is a int on column id
 	if columns[0].goType.Kind() != reflect.Int {
 		t.Errorf("Expected column id to be of type int, got '%s'", columns[0].goType.String())
@@ -83,6 +90,11 @@ func TestTable_ExtractStructColumns_Tags(t *testing.T) {
 	//check type is a string on column name
 	if columns[1].goType.Kind() != reflect.String {
 		t.Errorf("Expected column name to be of type string, got '%s'", columns[1].goType.String())
+	}
+
+	//check type is a int
+	if columns[2].goType.Kind() != reflect.Int {
+		t.Errorf("Expected column name to be of type int (override by type(int), got '%s'", columns[2].goType.String())
 	}
 }
 
@@ -250,4 +262,20 @@ func TestTable_FindAI(t *testing.T) {
 		t.Errorf("Expected to get no match '%v'", col)
 	}
 
+}
+
+func TestTable_camelToSnake(t *testing.T) {
+	actual := camelToSnake("TestGoCamelCasing")
+	expected := "test_go_camel_casing"
+	if actual != expected {
+		t.Errorf("Expected `%s` but got `%s`", expected, actual)
+	}
+}
+
+func TestTable_snakeToCamel(t *testing.T) {
+	actual := snakeToCamel("test_go_camel_casing")
+	expected := "TestGoCamelCasing"
+	if actual != expected {
+		t.Errorf("Expected `%s` but got `%s`", expected, actual)
+	}
 }

@@ -1,6 +1,8 @@
 package storm
 
 import (
+	"bytes"
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -79,13 +81,30 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 
 			var columnName string = tags["name"]
 			if columnName == "" {
-				columnName = strings.ToLower(f.Name)
+				columnName = camelToSnake(f.Name)
+			}
+
+			//ignore tag, or when not exported we ignore it
+			t := f.Type
+			if overideType, ok := tags["type"]; ok {
+				switch overideType {
+				case "int":
+					t = reflect.TypeOf(int(0))
+				case "string":
+					t = reflect.TypeOf(string(""))
+				default:
+					panic(fmt.Sprintf("Unkown override type `%s`", overideType))
+				}
+
+				if !f.Type.ConvertibleTo(t) {
+					panic(fmt.Sprintf("cannot override type `%s` with `%s`", f.Type, t))
+				}
 			}
 
 			col := &column{
 				columnName: columnName,
 				settings:   tags,
-				goType:     f.Type,
+				goType:     t,
 				goIndex:    append(index, f.Index...),
 			}
 			cols = append(cols, col)
@@ -134,4 +153,30 @@ func findAI(cols []*column, pks []*column) *column {
 		return pks[0]
 	}
 	return nil
+}
+
+func camelToSnake(u string) string {
+
+	buf := bytes.NewBufferString("")
+	for i, v := range u {
+		if i > 0 && v >= 'A' && v <= 'Z' {
+			buf.WriteRune('_')
+		}
+		buf.WriteRune(v)
+	}
+
+	return strings.ToLower(buf.String())
+}
+
+func snakeToCamel(s string) string {
+
+	buf := bytes.NewBufferString("")
+	for _, v := range strings.Split(s, "_") {
+		if len(v) > 0 {
+			buf.WriteString(strings.ToUpper(v[:1]))
+			buf.WriteString(v[1:])
+		}
+	}
+
+	return buf.String()
 }
