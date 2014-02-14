@@ -37,7 +37,7 @@ err := s.Save(&newCustomer)
 **Get one entity by its primary key**
 ```GO
 var customer Customer
-obj, err := s.Fin(&customer, 1)
+obj, err := s.Find(&customer, 1)
 ```
 
 **Update a entity**

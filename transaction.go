@@ -2,6 +2,7 @@ package storm
 
 import (
 	"database/sql"
+	"log"
 	"reflect"
 
 	"github.com/mbict/storm/dialect"
@@ -80,4 +81,8 @@ func (this *Transaction) Rollback() error {
 
 func (this *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
 	return this.storm.table(t)
+}
+
+func (this *Transaction) logger() *log.Logger {
+	return this.storm.log
 }

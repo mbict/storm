@@ -141,6 +141,11 @@ func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error
 
 	//generate sql and prepare
 	sqlQuery, bind := this.generateCountSQL(tbl)
+
+	if this.ctx.logger() != nil {
+		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	}
+
 	stmt, err := db.Prepare(sqlQuery)
 	if err != nil {
 		return 0, err
@@ -151,7 +156,6 @@ func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error
 	row := stmt.QueryRow(bind...)
 
 	//create destination and scan
-
 	err = row.Scan(&cnt)
 	return cnt, err
 }
@@ -175,10 +179,6 @@ func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (
 		return errors.New("Provided input is not a structure type")
 	}
 
-	//if !v.CanSet() {
-	//	return errors.New("Provided input is not assignable")
-	//}
-
 	//find the table
 	tbl, ok := this.ctx.table(v.Type())
 	if !ok {
@@ -194,6 +194,10 @@ func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (
 
 	//generate sql and prepare
 	sqlQuery, bind := this.generateSelectSQL(tbl)
+	if this.ctx.logger() != nil {
+		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	}
+	
 	stmt, err := db.Prepare(sqlQuery)
 	if err != nil {
 		return err
@@ -243,6 +247,10 @@ func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
 
 	//generate sql and prepare
 	sqlQuery, bind := this.generateSelectSQL(tbl)
+	if this.ctx.logger() != nil {
+		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	}
+	
 	stmt, err := db.Prepare(sqlQuery)
 	if err != nil {
 		return err

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ type context interface {
 	DB() sqlCommon
 	Dialect() dialect.Dialect
 	table(t reflect.Type) (tbl *table, ok bool)
+	logger() *log.Logger
 }
 
 type Storm struct {
@@ -23,6 +25,7 @@ type Storm struct {
 	dialect   dialect.Dialect
 	tables    map[reflect.Type]*table
 	tableLock sync.RWMutex
+	log       *log.Logger
 }
 
 func Open(driverName string, dataSourceName string) (*Storm, error) {
@@ -42,6 +45,10 @@ func (this *Storm) DB() sqlCommon {
 //get the current dialect used by the connection
 func (this *Storm) Dialect() dialect.Dialect {
 	return this.dialect
+}
+
+func (this *Storm) Log(log *log.Logger) {
+	this.log = log
 }
 
 func (this *Storm) Query() *Query {
@@ -96,7 +103,12 @@ func (this *Storm) CreateTable(i interface{}) error {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
 	}
 
-	_, err := this.db.Exec(this.generateCreateTableSQL(tbl))
+	sqlCreateTable := this.generateCreateTableSQL(tbl)
+	if this.log != nil {
+		this.log.Println(sqlCreateTable)
+	}
+
+	_, err := this.db.Exec(sqlCreateTable)
 	return err
 }
 
@@ -117,7 +129,12 @@ func (this *Storm) DropTable(i interface{}) error {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
 	}
 
-	_, err := this.db.Exec(this.generateDropTableSQL(tbl))
+	sqlDropTable := this.generateDropTableSQL(tbl)
+	if this.log != nil {
+		this.log.Println(sqlDropTable)
+	}
+
+	_, err := this.db.Exec(sqlDropTable)
 	return err
 }
 
@@ -157,9 +174,12 @@ func (this *Storm) deleteEntity(i interface{}, db sqlCommon) (err error) {
 		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
 	}
 
-	deleteSql, bind := this.generateDeleteSQL(v, tbl)
+	sqlDelete, bind := this.generateDeleteSQL(v, tbl)
+	if this.log != nil {
+		this.log.Printf("`%s` binding : %v", sqlDelete, bind)
+	}
 
-	_, err = db.Exec(deleteSql, bind...)
+	_, err = db.Exec(sqlDelete, bind...)
 	return err
 }
 
@@ -208,6 +228,10 @@ func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
 			return err
 		}
 		defer stmt.Close()
+
+		if this.log != nil {
+			this.log.Printf("`%s` binding : %v", sqlQuery, bind)
+		}
 
 		if insert == true {
 			id, err := this.dialect.InsertAutoIncrement(stmt, bind...)
@@ -327,6 +351,7 @@ func (this *Storm) generateDropTableSQL(tbl *table) string {
 	return fmt.Sprintf("DROP TABLE %s", this.dialect.Quote(tbl.tableName))
 }
 
+//find a table
 func (this *Storm) table(t reflect.Type) (tbl *table, ok bool) {
 
 	this.tableLock.RLock()
@@ -334,4 +359,8 @@ func (this *Storm) table(t reflect.Type) (tbl *table, ok bool) {
 
 	tbl, ok = this.tables[t]
 	return
+}
+
+func (this *Storm) logger() *log.Logger {
+	return this.log
 }

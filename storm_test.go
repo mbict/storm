@@ -1,9 +1,11 @@
 package storm
 
 import (
+	"bytes"
 	"database/sql"
 	"reflect"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -13,14 +15,14 @@ func TestStorm_RegisterStructure(t *testing.T) {
 	var (
 		s          *Storm
 		err        error
-		typeStruct = reflect.TypeOf(testStructure{})
+		typeStruct = reflect.TypeOf(testAllTypeStructure{})
 		tbl        *table
 		ok         bool
 	)
 
 	//register by casted nil type
 	s, _ = Open(`sqlite3`, `:memory:`)
-	err = s.RegisterStructure((*testStructure)(nil), `testStructure`)
+	err = s.RegisterStructure((*testAllTypeStructure)(nil), `testAllTypeStructure`)
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
 	}
@@ -31,7 +33,7 @@ func TestStorm_RegisterStructure(t *testing.T) {
 
 	//register by element
 	s, _ = Open(`sqlite3`, `:memory:`)
-	structure := testStructure{}
+	structure := testAllTypeStructure{}
 	err = s.RegisterStructure(structure, `testStructure`)
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
@@ -43,7 +45,7 @@ func TestStorm_RegisterStructure(t *testing.T) {
 
 	//register by nil element
 	s, _ = Open(`sqlite3`, `:memory:`)
-	structurePtr := &testStructure{}
+	structurePtr := &testAllTypeStructure{}
 	err = s.RegisterStructure(structurePtr, `testStructure`)
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
@@ -326,6 +328,188 @@ func TestStorm_Save(t *testing.T) {
 	}
 }
 
+func TestStorm_SaveFindAllTypes(t *testing.T) {
+
+	var (
+		err    error
+		input  *testAllTypeStructure
+		result *testAllTypeStructure
+		s      = newTestStorm()
+	)
+
+	assertEqualField := func(v1, v2 interface{}, message string) {
+		if v1 != v2 {
+			t.Errorf(message, v1, v2)
+		}
+	}
+
+	//s.Log(log.New(os.Stdout, "[storm]", 0))
+
+	//update a existing entity
+	if _, err = s.DB().Exec("INSERT INTO `testAllTypeStructure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
+		"(1, 5, '2010-12-31 23:59:59 +0000 UTC', '1234567890ABCDEFG', 'stringvalue', 99, 999, 99.1234, 'TRUE', 'null_String_value', 99, 99.1234, 'TRUE')"); err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	if _, err = s.DB().Exec("INSERT INTO `testAllTypeStructure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
+		"(2, 6, NULL, 'GFEDCBA0987654321', '2nd string value', 199, 1999, 199.1234, 'FALSE', NULL, NULL, NULL, NULL)"); err != nil {
+		t.Fatalf("Failure on saving testdate to store `%v`", err)
+	}
+
+	input = &testAllTypeStructure{
+		Id:             1,
+		TestCustomType: 3,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test update",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{"", false},
+		NullInt:        sql.NullInt64{0, false},
+		NullFloat:      sql.NullFloat64{0, false},
+		NullBool:       sql.NullBool{false, false},
+	}
+
+	//save item
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (update) with error `%v`", err.Error())
+	}
+
+	//fetch item we just uupdated and compare if the items are set as expected
+	if err = s.Find(&result, 1); err != nil {
+		t.Fatalf("Unable to find modified record `%v`", err.Error())
+	}
+
+	//assert row equals
+	assertEqualField(1, result.Id, "Id mismatches %d != %d")
+	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
+	assertEqualField(input.Time, result.Time, "Time mismatches %s != %s")
+	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
+		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
+	}
+	assertEqualField("test update", result.String, "String mismatches %s != %s")
+	assertEqualField(int(1234), result.Int, "Int mismatches %d != %d")
+	assertEqualField(int64(5678), result.Int64, "Int64 mismatches %d != %d")
+	assertEqualField(float64(1234.56), result.Float64, "Float64 mismatches %f != %f")
+	assertEqualField(input.Bool, result.Bool, "Bool mismatches %c != %c")
+	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
+	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
+	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
+	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
+
+	//save with null values (only check the null value rows)
+	input = &testAllTypeStructure{
+		Id:             2,
+		TestCustomType: 4,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test update",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{"test1234", true},
+		NullInt:        sql.NullInt64{234, true},
+		NullFloat:      sql.NullFloat64{234.12, true},
+		NullBool:       sql.NullBool{true, true},
+	}
+
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (update) with error `%v`", err.Error())
+	}
+
+	if err = s.Find(&result, 2); err != nil {
+		t.Fatalf("Unable to find modified record `%v`", err.Error())
+	}
+
+	//assert row equals
+	assertEqualField(false, result.Bool, "Bool mismatches %c != %c")
+	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
+	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
+	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
+	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
+
+	//*** insert tests ***************************************
+	input = &testAllTypeStructure{
+		Id:             0,
+		TestCustomType: 3,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test update",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{"", false},
+		NullInt:        sql.NullInt64{0, false},
+		NullFloat:      sql.NullFloat64{0, false},
+		NullBool:       sql.NullBool{false, false},
+	}
+
+	//save item
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
+	}
+
+	//fetch item we just uupdated and compare if the items are set as expected
+	if err = s.Find(&result, 3); err != nil {
+		t.Fatalf("Unable to find inserted record `%v`", err.Error())
+	}
+
+	//assert row equals
+	assertEqualField(3, result.Id, "Id mismatches %d != %d")
+	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
+	assertEqualField(input.Time, result.Time, "Time mismatches %s != %s")
+	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
+		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
+	}
+	assertEqualField("test update", result.String, "String mismatches %s != %s")
+	assertEqualField(1234, result.Int, "Int mismatches %d != %d")
+	assertEqualField(int64(5678), result.Int64, "Int64 mismatches %d != %d")
+	assertEqualField(1234.56, result.Float64, "Float64 mismatches %f != %f")
+	assertEqualField(input.Bool, result.Bool, "Bool mismatches %c != %c")
+	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
+	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
+	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
+	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
+
+	//save with null values (only check the null value rows)
+	input = &testAllTypeStructure{
+		Id:             0,
+		TestCustomType: 4,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test update",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{"test1234", true},
+		NullInt:        sql.NullInt64{234, true},
+		NullFloat:      sql.NullFloat64{234.12, true},
+		NullBool:       sql.NullBool{true, true},
+	}
+
+	if err = s.Save(input); err != nil {
+		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
+	}
+
+	if err = s.Find(&result, 4); err != nil {
+		t.Fatalf("Unable to find inserted record `%v`", err.Error())
+	}
+
+	//assert row equals
+	assertEqualField(4, result.Id, "Id mismatches %d != %d")
+	assertEqualField(false, result.Bool, "Bool mismatches %c != %c")
+	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
+	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
+	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
+	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
+
+}
+
 func TestStorm_SaveWrongInput(t *testing.T) {
 
 	var err error
@@ -575,10 +759,13 @@ func TestStorm_generateUpdateSQL(t *testing.T) {
 
 func TestStorm_generateCreateTableSQL(t *testing.T) {
 	s := newTestStorm()
-	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
 
 	sqlQuery := s.generateCreateTableSQL(tbl)
-	sqlExpected := "CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY,`name` TEXT)"
+	sqlExpected := "CREATE TABLE `testAllTypeStructure` " +
+		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
+		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT," +
+		"`null_float` REAL,`null_bool` BOOL)"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
@@ -586,10 +773,10 @@ func TestStorm_generateCreateTableSQL(t *testing.T) {
 
 func TestStorm_generateDropTableSQL(t *testing.T) {
 	s := newTestStorm()
-	tbl, _ := s.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
 
 	sqlQuery := s.generateDropTableSQL(tbl)
-	sqlExpected := "DROP TABLE `testStructure`"
+	sqlExpected := "DROP TABLE `testAllTypeStructure`"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}

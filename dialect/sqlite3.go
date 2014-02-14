@@ -14,7 +14,7 @@ func (*sqlite3) InsertAutoIncrement(stmt *sql.Stmt, bind ...interface{}) (int64,
 }
 
 func (*sqlite3) SqlType(column interface{}, size int) string {
-	switch column.(type) {
+	switch v := column.(type) {
 	case time.Time:
 		return "DATETIME"
 	case bool, sql.NullBool:
@@ -34,7 +34,7 @@ func (*sqlite3) SqlType(column interface{}, size int) string {
 			return "TEXT"
 		}
 	default:
-		panic(fmt.Sprintf("Invalid sql type for sqlite3 (%v)", column))
+		panic(fmt.Sprintf("Invalid sql type for sqlite3 (%v, %s)", v, column))
 	}
 }
 
