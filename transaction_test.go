@@ -87,7 +87,7 @@ func TestTransaction_Save(t *testing.T) {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
 
-	input = &testStructure{1, `test updated`}
+	input = &testStructure{Id: 1, Name: `test updated`}
 	if err = tx1.Save(input); err != nil {
 		t.Fatalf("Failed save (update) with error `%v`", err.Error())
 	}
@@ -112,7 +112,7 @@ func TestTransaction_Save(t *testing.T) {
 	}
 
 	//insert a new entity
-	input = &testStructure{0, "test insert"}
+	input = &testStructure{Id: 0, Name: "test insert"}
 	if err = tx1.Save(input); err != nil {
 		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
 	}
@@ -131,7 +131,7 @@ func TestTransaction_Save(t *testing.T) {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
 
-	if err = assertEntity(input, &testStructure{3, "test insert"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 3, Name: "test insert"}); err != nil {
 		t.Fatalf(err.Error())
 	}
 
@@ -185,7 +185,7 @@ func TestTransaction_Find(t *testing.T) {
 func TestTransaction_Delete(t *testing.T) {
 	var (
 		err   error
-		input *testStructure = &testStructure{2, "name delete"}
+		input *testStructure = &testStructure{Id: 2, Name: "name delete"}
 		s                    = newTestStormFile()
 		tx1   *Transaction   = s.Begin()
 		res   *sql.Row
@@ -238,7 +238,7 @@ func TestTransaction_Commit(t *testing.T) {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
 
-	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf("Entity mismatch : %v", err)
 	}
 }

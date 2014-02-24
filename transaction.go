@@ -31,6 +31,11 @@ func (this *Transaction) DB() sqlCommon {
 	return this.tx
 }
 
+//get the storm context
+func (this *Transaction) Storm() *Storm {
+	return this.storm
+}
+
 //get the current dialect used by the connection
 func (this *Transaction) Dialect() dialect.Dialect {
 	return this.storm.Dialect()
@@ -58,7 +63,7 @@ func (this *Transaction) Offset(offset int) *Query {
 }
 
 func (this *Transaction) Find(i interface{}, where ...interface{}) error {
-	return this.Query().fetchRow(i, this.tx, where...)
+	return this.Query().fetchRow(i, where...)
 }
 
 func (this *Transaction) Delete(i interface{}) error {

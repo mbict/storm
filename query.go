@@ -16,14 +16,14 @@ const (
 )
 
 type Query struct {
-	ctx    context
+	ctx    Context
 	where  map[string][]interface{}
 	order  map[string]SortDirection
 	offset int
 	limit  int
 }
 
-func newQuery(ctx context, parent *Query) *Query {
+func newQuery(ctx Context, parent *Query) *Query {
 
 	q := Query{
 		ctx:    ctx,
@@ -81,13 +81,13 @@ func (this *Query) Offset(offset int) *Query {
 func (this *Query) Find(i interface{}, where ...interface{}) error {
 
 	if len(where) >= 1 {
-		return this.Query().fetchRow(i, this.ctx.DB(), where...)
+		return this.Query().fetchRow(i, where...)
 	}
-	return this.fetchRow(i, this.ctx.DB())
+	return this.fetchRow(i)
 }
 
 func (this *Query) Select(i interface{}) error {
-	return this.fetchAll(i, this.ctx.DB())
+	return this.fetchAll(i)
 }
 
 func (this *Query) SelectRow(i interface{}) error {
@@ -95,7 +95,7 @@ func (this *Query) SelectRow(i interface{}) error {
 }
 
 func (this *Query) Count(i interface{}) (int64, error) {
-	return this.fetchCount(i, this.ctx.DB())
+	return this.fetchCount(i)
 }
 
 //create additional where stements from arguments
@@ -123,7 +123,7 @@ func (this *Query) applyWhere(tbl *table, where ...interface{}) error {
 }
 
 //fetch a single row into a element
-func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error) {
+func (this *Query) fetchCount(i interface{}) (cnt int64, err error) {
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -146,7 +146,7 @@ func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error
 		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
 
-	stmt, err := db.Prepare(sqlQuery)
+	stmt, err := this.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return 0, err
 	}
@@ -161,10 +161,10 @@ func (this *Query) fetchCount(i interface{}, db sqlCommon) (cnt int64, err error
 }
 
 //fetch a single row into a element
-func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (err error) {
+func (this *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("Provided structure is not a pointer type")
+		return errors.New("Provided input is not a pointer type")
 	}
 
 	v = v.Elem()
@@ -197,8 +197,8 @@ func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (
 	if this.ctx.logger() != nil {
 		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
-	
-	stmt, err := db.Prepare(sqlQuery)
+
+	stmt, err := this.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return err
 	}
@@ -212,11 +212,17 @@ func (this *Query) fetchRow(i interface{}, db sqlCommon, where ...interface{}) (
 	for key, col := range tbl.columns {
 		dest[key] = v.FieldByIndex(col.goIndex).Addr().Interface()
 	}
-	return row.Scan(dest...)
+
+	err = row.Scan(dest...)
+	if err != nil {
+		return err
+	}
+
+	return tbl.callbacks.invoke(v.Addr(), "OnInit", this.ctx)
 }
 
 //fetch a single row into a element
-func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
+func (this *Query) fetchAll(i interface{}) error {
 
 	ts := reflect.TypeOf(i)
 	if ts.Kind() != reflect.Ptr {
@@ -250,8 +256,8 @@ func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
 	if this.ctx.logger() != nil {
 		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
-	
-	stmt, err := db.Prepare(sqlQuery)
+
+	stmt, err := this.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return err
 	}
@@ -283,9 +289,12 @@ func (this *Query) fetchAll(i interface{}, db sqlCommon) error {
 		for key, col := range tbl.columns {
 			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
 		}
-		err = rows.Scan(dest...)
 
-		if err != nil {
+		if err = rows.Scan(dest...); err != nil {
+			return err
+		}
+
+		if err = tbl.callbacks.invoke(v, "OnInit", this.ctx); err != nil {
 			return err
 		}
 

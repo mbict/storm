@@ -111,7 +111,7 @@ func TestStorm_Find(t *testing.T) {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
 
-	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf("Error: %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestStorm_Find(t *testing.T) {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
 
-	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf("Error: %v", err)
 	}
 
@@ -131,7 +131,7 @@ func TestStorm_Find(t *testing.T) {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
 
-	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf("Error: %v", err)
 	}
 
@@ -141,8 +141,13 @@ func TestStorm_Find(t *testing.T) {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
 
-	if err = assertEntity(input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf("Error: %v", err)
+	}
+
+	//check if callback OnInit is called
+	if input.onInitInvoked != true {
+		t.Errorf("OnInit function not invoked")
 	}
 }
 
@@ -160,7 +165,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided structure is not a pointer type`
+	expectedError = `Provided input is not a pointer type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -191,30 +196,11 @@ func TestStorm_FindWrongInput(t *testing.T) {
 func TestStorm_Delete(t *testing.T) {
 	var (
 		err   error
-		input testStructure = testStructure{1, `name`}
+		input testStructure = testStructure{Id: 1, Name: "name"}
 		s                   = newTestStormFile()
 		res   *sql.Row
 	)
 
-	//normal
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	if err = s.Delete(input); err != nil {
-		t.Fatalf("Failed delete with error `%v`", err.Error())
-	}
-
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		if err == nil {
-			t.Fatalf("Record not deleted")
-		}
-		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
-	}
-
-	//pointer variant
 	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
@@ -222,6 +208,16 @@ func TestStorm_Delete(t *testing.T) {
 
 	if err = s.Delete(&input); err != nil {
 		t.Fatalf("Failed delete with error `%v`", err.Error())
+	}
+
+	//check if callback beforeDelete is called
+	if input.onDeleteInvoked != true {
+		t.Errorf("OnDelete callback not invoked")
+	}
+
+	//check if callback AfterDelete is called
+	if input.onPostDeleteInvoked != true {
+		t.Errorf("OnDeleted callback not invoked")
 	}
 
 	res = s.DB().QueryRow("SELECT * FROM `testStructure` WHERE `id` = ?", 1)
@@ -245,6 +241,14 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
+	expectedError = `Provided input is not a pointer type`
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+
+	if err = s.Delete(&inputInt); err == nil {
+		t.Fatalf("Expected a error but got none")
+	}
 	expectedError = `Provided input is not a structure type`
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
@@ -289,7 +293,7 @@ func TestStorm_Save(t *testing.T) {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
 
-	input = &testStructure{1, `test updated`}
+	input = &testStructure{Id: 1, Name: "test updated"}
 	if err = s.Save(input); err != nil {
 		t.Fatalf("Failed save (update) with error `%v`", err.Error())
 	}
@@ -303,8 +307,18 @@ func TestStorm_Save(t *testing.T) {
 		t.Fatalf("Entity data not updated")
 	}
 
+	//check if callback OnUpdate is called
+	if input.onUpdateInvoked != true {
+		t.Errorf("OnUpdate callback not invoked")
+	}
+
+	//check if callback OnUpdated is called
+	if input.onPostUpdateInvoked != true {
+		t.Errorf("OnUpdated callback not invoked")
+	}
+
 	//insert a new entity
-	input = &testStructure{0, "test insert"}
+	input = &testStructure{Id: 0, Name: "test inserted"}
 	if err = s.Save(input); err != nil {
 		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
 	}
@@ -323,8 +337,18 @@ func TestStorm_Save(t *testing.T) {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
 
-	if err = assertEntity(input, &testStructure{3, "test insert"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 3, Name: "test insert"}); err != nil {
 		t.Fatalf(err.Error())
+	}
+
+	//check if callback OnInsert is called
+	if input.onInsertInvoked != true {
+		t.Errorf("OnInsert callback not invoked")
+	}
+
+	//check if callback OnInserted is called
+	if input.onPostInserteInvoked != true {
+		t.Errorf("OnInserted callback not invoked")
 	}
 }
 
@@ -520,7 +544,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided structure is not a pointer type`
+	expectedError = `Provided input is not a pointer type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -687,7 +711,7 @@ func TestStorm_Begin(t *testing.T) {
 //--------------------------------------
 func TestStorm_generateDeleteSql(t *testing.T) {
 	s := newTestStorm()
-	entity := testStructure{1, "test"}
+	entity := testStructure{Id: 1, Name: "test"}
 	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 
@@ -709,7 +733,7 @@ func TestStorm_generateDeleteSql(t *testing.T) {
 
 func TestStorm_generateInsertSQL(t *testing.T) {
 	s := newTestStorm()
-	entity := testStructure{0, "test"}
+	entity := testStructure{Id: 0, Name: "test"}
 	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 
@@ -731,7 +755,7 @@ func TestStorm_generateInsertSQL(t *testing.T) {
 
 func TestStorm_generateUpdateSQL(t *testing.T) {
 	s := newTestStorm()
-	entity := testStructure{2, "test"}
+	entity := testStructure{Id: 2, Name: "test"}
 	tbl, _ := s.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
 

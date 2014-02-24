@@ -13,9 +13,20 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
-type context interface {
+type Context interface {
 	DB() sqlCommon
+	Storm() *Storm
 	Dialect() dialect.Dialect
+
+	Query() *Query
+	Order(column string, direction SortDirection) *Query
+	Where(condition string, bindAttr ...interface{}) *Query
+	Limit(limit int) *Query
+	Offset(offset int) *Query
+	Find(i interface{}, where ...interface{}) error
+	Delete(i interface{}) error
+	Save(i interface{}) error
+
 	table(t reflect.Type) (tbl *table, ok bool)
 	logger() *log.Logger
 }
@@ -43,6 +54,11 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 //get the connection context
 func (this *Storm) DB() sqlCommon {
 	return this.db
+}
+
+//get the connection context
+func (this *Storm) Storm() *Storm {
+	return this
 }
 
 //get the current dialect used by the connection
@@ -171,15 +187,27 @@ func (this *Storm) RegisterStructure(i interface{}, name string) error {
 		return errors.New(fmt.Sprintf("Duplicate structure, '%s' already exists", t))
 	}
 
-	this.tables[t] = newTable(reflect.Zero(t), name)
+	this.tables[t] = newTable(reflect.New(t), name)
 	return nil
 }
 
 //helpers
 
 func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
-	v := reflect.Indirect(reflect.ValueOf(i))
-	if v.Kind() != reflect.Struct {
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("Provided input is not a pointer type")
+	}
+
+	v = v.Elem()
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+	}
+	v = reflect.Indirect(v)
+
+	if v.Kind() != reflect.Struct || !v.CanSet() {
 		return errors.New("Provided input is not a structure type")
 	}
 
@@ -194,7 +222,7 @@ func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 		this.log.Printf("`%s` binding : %v", sqlDelete, bind)
 	}
 
-	err = tbl.callbacks.invoke(v, "beforeDelete", tx, nil, this)
+	err = tbl.callbacks.invoke(v.Addr(), "OnDelete", tx)
 	if err != nil {
 		return err
 	}
@@ -204,14 +232,14 @@ func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 		return err
 	}
 
-	return tbl.callbacks.invoke(v, "afterDelete", tx, nil, this)
+	return tbl.callbacks.invoke(v.Addr(), "OnPostDelete", tx)
 }
 
 func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("Provided structure is not a pointer type")
+		return errors.New("Provided input is not a pointer type")
 	}
 
 	v = v.Elem()
@@ -241,10 +269,10 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 		var insert bool = v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
 		if insert == true {
 			//insert
-			err = tbl.callbacks.invoke(v, "beforeInsert", tx, nil, this)
+			err = tbl.callbacks.invoke(v.Addr(), "OnInsert", tx)
 			sqlQuery, bind = this.generateInsertSQL(v, tbl)
 		} else {
-			err = tbl.callbacks.invoke(v, "beforeUpdate", tx, nil, this)
+			err = tbl.callbacks.invoke(v.Addr(), "OnUpdate", tx)
 			sqlQuery, bind = this.generateUpdateSQL(v, tbl)
 		}
 
@@ -271,13 +299,13 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 			if err != nil {
 				return err
 			}
-			err = tbl.callbacks.invoke(v, "afterInsert", tx, nil, this)
+			err = tbl.callbacks.invoke(v.Addr(), "OnPostInsert", tx)
 		} else {
 			_, err = stmt.Exec(bind...)
 			if err != nil {
 				return err
 			}
-			err = tbl.callbacks.invoke(v, "afterUpdate", tx, nil, this)
+			err = tbl.callbacks.invoke(v.Addr(), "OnPostUpdate", tx)
 		}
 		return err
 	} else {

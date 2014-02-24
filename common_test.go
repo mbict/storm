@@ -39,7 +39,25 @@ func (tct *testCustomType) Value() (driver.Value, error) {
 type testStructure struct {
 	Id   int
 	Name string
+
+	//test invoke params
+	onInsertInvoked      bool
+	onPostInserteInvoked bool
+	onUpdateInvoked      bool
+	onPostUpdateInvoked  bool
+	onDeleteInvoked      bool
+	onPostDeleteInvoked  bool
+	onInitInvoked        bool
 }
+
+//all posibile callbacks
+func (t *testStructure) OnInsert()     { t.onInsertInvoked = true }
+func (t *testStructure) OnPostInsert() { t.onPostInserteInvoked = true }
+func (t *testStructure) OnUpdate()     { t.onUpdateInvoked = true }
+func (t *testStructure) OnPostUpdate() { t.onPostUpdateInvoked = true }
+func (t *testStructure) OnDelete()     { t.onDeleteInvoked = true }
+func (t *testStructure) OnPostDelete() { t.onPostDeleteInvoked = true }
+func (t *testStructure) OnInit()       { t.onInitInvoked = true }
 
 type testAllTypeStructure struct {
 	Id             int
@@ -55,27 +73,7 @@ type testAllTypeStructure struct {
 	NullInt        sql.NullInt64
 	NullFloat      sql.NullFloat64
 	NullBool       sql.NullBool
-
-	//test invoke params
-	beforeInsertInvoked bool
-	afterInsertInvoked  bool
-	beforeUpdateInvoked bool
-	afterUpdateInvoked  bool
-	beforeDeleteInvoked bool
-	afterDeleteInvoked  bool
-	beforeFindInvoked   bool
-	afterFindInvoked    bool
 }
-
-//all posibile callbacks
-func (t *testAllTypeStructure) beforeInsert() { t.beforeInsertInvoked = true }
-func (t *testAllTypeStructure) afterInsert()  { t.afterInsertInvoked = true }
-func (t *testAllTypeStructure) beforeUpdate() { t.beforeUpdateInvoked = true }
-func (t *testAllTypeStructure) afterUpdate()  { t.afterUpdateInvoked = true }
-func (t *testAllTypeStructure) beforeDelete() { t.beforeDeleteInvoked = true }
-func (t *testAllTypeStructure) afterDelete()  { t.afterDeleteInvoked = true }
-func (t *testAllTypeStructure) beforeFind()   { t.beforeFindInvoked = true }
-func (t *testAllTypeStructure) afterFind()    { t.afterFindInvoked = true }
 
 func newTestStorm() *Storm {
 	s, err := Open(`sqlite3`, `:memory:`)

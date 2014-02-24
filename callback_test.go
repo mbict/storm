@@ -7,17 +7,13 @@ import (
 )
 
 type testCallbackStructure struct {
-	s  *Storm
-	q  *Query
-	tx *Transaction
+	ctx Context
 
 	noReturnCallbackInvoked bool
 	noErrorCallbackInvoked  bool
 	errorCallbackInvoked    bool
 
-	noErrorCallbackGotQueryArg       bool
-	noErrorCallbackGotTransactionArg bool
-	noErrorCallbackGotStormArg       bool
+	noErrorCallbackGotContextArg bool
 }
 
 func (t *testCallbackStructure) InvalidArgument(test int) {
@@ -27,19 +23,11 @@ func (t *testCallbackStructure) NoReturnCallback() {
 	t.noReturnCallbackInvoked = true
 }
 
-func (t *testCallbackStructure) NoErrorCallback(q *Query, tx *Transaction, s *Storm) error {
+func (t *testCallbackStructure) NoErrorCallback(ctx Context) error {
 	t.noErrorCallbackInvoked = true
 
-	if t.s == s {
-		t.noErrorCallbackGotStormArg = true
-	}
-
-	if t.q == q {
-		t.noErrorCallbackGotQueryArg = true
-	}
-
-	if t.tx == tx {
-		t.noErrorCallbackGotTransactionArg = true
+	if t.ctx == ctx {
+		t.noErrorCallbackGotContextArg = true
 	}
 	return nil
 }
@@ -84,10 +72,7 @@ func TestCallback_RegisterCallback(t *testing.T) {
 func TestCallback_Invoke(t *testing.T) {
 
 	s := newTestStorm()
-	q := s.Query()
-	tx := s.Begin()
-
-	st := &testCallbackStructure{s: s, q: q, tx: tx}
+	st := &testCallbackStructure{ctx: s}
 	v := reflect.ValueOf(st)
 	c := make(callback)
 	if !c.registerCallback(v, "NoReturnCallback") || !c.registerCallback(v, "NoErrorCallback") || !c.registerCallback(v, "ErrorCallback") {
@@ -95,7 +80,7 @@ func TestCallback_Invoke(t *testing.T) {
 	}
 
 	//no arguments no return
-	err := c.invoke(v, "NoReturnCallback", nil, nil, nil)
+	err := c.invoke(v, "NoReturnCallback", nil)
 	if err != nil {
 		t.Errorf("Did not expected a error but got one `%v`", err)
 	}
@@ -105,7 +90,7 @@ func TestCallback_Invoke(t *testing.T) {
 	}
 
 	//nil error returned test
-	err = c.invoke(v, "NoErrorCallback", tx, q, s)
+	err = c.invoke(v, "NoErrorCallback", s)
 	if err != nil {
 		t.Errorf("Did not expected a error but got one `%v`", err)
 	}
@@ -114,20 +99,12 @@ func TestCallback_Invoke(t *testing.T) {
 		t.Errorf("Expected invoked method but its not invoked")
 	}
 
-	if st.noErrorCallbackGotQueryArg != true {
+	if st.noErrorCallbackGotContextArg != true {
 		t.Errorf("Expected query non nil argument")
 	}
 
-	if st.noErrorCallbackGotTransactionArg != true {
-		t.Errorf("Expected transaction non nil argument")
-	}
-
-	if st.noErrorCallbackGotStormArg != true {
-		t.Errorf("Expected storm argument non nil")
-	}
-
 	//with return and arguments
-	err = c.invoke(v, "ErrorCallback", tx, q, s)
+	err = c.invoke(v, "ErrorCallback", s)
 	if err == nil {
 		t.Errorf("Did expected a error but got none", err)
 	}

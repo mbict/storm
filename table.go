@@ -26,24 +26,23 @@ type table struct {
 func newTable(v reflect.Value, name string) *table {
 
 	//read the structure
-	cols := extractStructColumns(v, nil)
+	cols := extractStructColumns(reflect.Indirect(v), nil)
 	pks := findPKs(cols)
 
 	//scan for callbacks
 	cb := make(callback)
-	cb.registerCallback(v, "BeforeInsert")
-	cb.registerCallback(v, "AfterInsert")
-	cb.registerCallback(v, "BeforeUpdate")
-	cb.registerCallback(v, "AfterUpdate")
-	cb.registerCallback(v, "BeforeDelete")
-	cb.registerCallback(v, "AfterDelete")
-	cb.registerCallback(v, "BeforeFind")
-	cb.registerCallback(v, "AfterFind")
+	cb.registerCallback(v, "OnInsert")
+	cb.registerCallback(v, "OnPostInsert")
+	cb.registerCallback(v, "OnUpdate")
+	cb.registerCallback(v, "OnPostUpdate")
+	cb.registerCallback(v, "OnDelete")
+	cb.registerCallback(v, "OnPostDelete")
+	cb.registerCallback(v, "OnInit")
 
 	//create the table structure
 	return &table{
 		tableName: name,
-		goType:    v.Type(),
+		goType:    reflect.Indirect(v).Type(),
 		columns:   cols,
 		keys:      pks,
 		aiColumn:  findAI(cols, pks),

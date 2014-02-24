@@ -32,7 +32,7 @@ func TestQuery_SelectRow(t *testing.T) {
 	}
 
 	//check if the right item is returned
-	if err = assertEntity(&input, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(&input, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf(err.Error())
 	}
 
@@ -43,10 +43,14 @@ func TestQuery_SelectRow(t *testing.T) {
 	}
 
 	//check if the right item is returned
-	if err = assertEntity(inputPtr, &testStructure{1, "name"}); err != nil {
+	if err = assertEntity(inputPtr, &testStructure{Id: 1, Name: "name"}); err != nil {
 		t.Fatalf(err.Error())
 	}
 
+	//check if callback OnInit is called
+	if inputPtr.onInitInvoked != true {
+		t.Errorf("OnInit function not invoked")
+	}
 }
 
 func TestQuery_Select(t *testing.T) {
@@ -96,6 +100,11 @@ func TestQuery_Select(t *testing.T) {
 
 	if len(input) != 3 {
 		t.Fatalf("Expected to get %d records back but got %d", 3, len(input))
+	}
+
+	//check if callback OnInit is called
+	if input[0].onInitInvoked != true || input[1].onInitInvoked != true || input[2].onInitInvoked != true {
+		t.Errorf("OnInit function not invoked")
 	}
 }
 
