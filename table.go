@@ -20,6 +20,7 @@ type table struct {
 	columns   []*column
 	keys      []*column
 	aiColumn  *column
+	callbacks callback
 }
 
 func newTable(v reflect.Value, name string) *table {
@@ -28,6 +29,17 @@ func newTable(v reflect.Value, name string) *table {
 	cols := extractStructColumns(v, nil)
 	pks := findPKs(cols)
 
+	//scan for callbacks
+	cb := make(callback)
+	cb.registerCallback(v, "BeforeInsert")
+	cb.registerCallback(v, "AfterInsert")
+	cb.registerCallback(v, "BeforeUpdate")
+	cb.registerCallback(v, "AfterUpdate")
+	cb.registerCallback(v, "BeforeDelete")
+	cb.registerCallback(v, "AfterDelete")
+	cb.registerCallback(v, "BeforeFind")
+	cb.registerCallback(v, "AfterFind")
+
 	//create the table structure
 	return &table{
 		tableName: name,
@@ -35,10 +47,9 @@ func newTable(v reflect.Value, name string) *table {
 		columns:   cols,
 		keys:      pks,
 		aiColumn:  findAI(cols, pks),
+		callbacks: cb,
 	}
 }
-
-// -- helper functions
 
 // Parse structure tags like "tagname, tagname(property)" into a map
 func parseTags(s string) map[string]string {

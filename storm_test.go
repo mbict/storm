@@ -192,7 +192,7 @@ func TestStorm_Delete(t *testing.T) {
 	var (
 		err   error
 		input testStructure = testStructure{1, `name`}
-		s                   = newTestStorm()
+		s                   = newTestStormFile()
 		res   *sql.Row
 	)
 
@@ -278,7 +278,7 @@ func TestStorm_Save(t *testing.T) {
 	var (
 		err   error
 		input *testStructure
-		s     = newTestStorm()
+		s     = newTestStormFile()
 		res   *sql.Row
 	)
 
@@ -334,7 +334,7 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		err    error
 		input  *testAllTypeStructure
 		result *testAllTypeStructure
-		s      = newTestStorm()
+		s      = newTestStormFile()
 	)
 
 	assertEqualField := func(v1, v2 interface{}, message string) {
@@ -342,8 +342,6 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 			t.Errorf(message, v1, v2)
 		}
 	}
-
-	//s.Log(log.New(os.Stdout, "[storm]", 0))
 
 	//update a existing entity
 	if _, err = s.DB().Exec("INSERT INTO `testAllTypeStructure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +

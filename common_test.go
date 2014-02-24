@@ -55,7 +55,27 @@ type testAllTypeStructure struct {
 	NullInt        sql.NullInt64
 	NullFloat      sql.NullFloat64
 	NullBool       sql.NullBool
+
+	//test invoke params
+	beforeInsertInvoked bool
+	afterInsertInvoked  bool
+	beforeUpdateInvoked bool
+	afterUpdateInvoked  bool
+	beforeDeleteInvoked bool
+	afterDeleteInvoked  bool
+	beforeFindInvoked   bool
+	afterFindInvoked    bool
 }
+
+//all posibile callbacks
+func (t *testAllTypeStructure) beforeInsert() { t.beforeInsertInvoked = true }
+func (t *testAllTypeStructure) afterInsert()  { t.afterInsertInvoked = true }
+func (t *testAllTypeStructure) beforeUpdate() { t.beforeUpdateInvoked = true }
+func (t *testAllTypeStructure) afterUpdate()  { t.afterUpdateInvoked = true }
+func (t *testAllTypeStructure) beforeDelete() { t.beforeDeleteInvoked = true }
+func (t *testAllTypeStructure) afterDelete()  { t.afterDeleteInvoked = true }
+func (t *testAllTypeStructure) beforeFind()   { t.beforeFindInvoked = true }
+func (t *testAllTypeStructure) afterFind()    { t.afterFindInvoked = true }
 
 func newTestStorm() *Storm {
 	s, err := Open(`sqlite3`, `:memory:`)
@@ -68,6 +88,7 @@ func newTestStorm() *Storm {
 	s.RegisterStructure((*testAllTypeStructure)(nil), `testAllTypeStructure`)
 	s.db.Exec("DROP TABLE `testStructure`")
 	s.db.Exec("CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	s.db.Exec("DROP TABLE `testAllTypeStructure`")
 	s.db.Exec("CREATE TABLE `testAllTypeStructure` " +
 		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
 		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
@@ -89,8 +110,13 @@ func newTestStormFile() *Storm {
 	s, _ := Open(`sqlite3`, `file:`+tmp.Name()+`?mode=rwc`)
 	s.Log(log.New(ioutil.Discard, "", 0))
 	s.RegisterStructure((*testStructure)(nil), `testStructure`)
+	s.RegisterStructure((*testAllTypeStructure)(nil), `testAllTypeStructure`)
 	s.db.Exec("DROP TABLE `testStructure`")
 	s.db.Exec("CREATE TABLE `testStructure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	s.db.Exec("DROP TABLE `testAllTypeStructure`")
+	s.db.Exec("CREATE TABLE `testAllTypeStructure` " +
+		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
+		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
 	s.db.SetMaxIdleConns(10)
 	s.db.SetMaxOpenConns(10)
 

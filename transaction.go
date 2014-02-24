@@ -62,11 +62,11 @@ func (this *Transaction) Find(i interface{}, where ...interface{}) error {
 }
 
 func (this *Transaction) Delete(i interface{}) error {
-	return this.storm.deleteEntity(i, this.tx)
+	return this.storm.deleteEntity(i, this)
 }
 
 func (this *Transaction) Save(i interface{}) error {
-	return this.storm.saveEntity(i, this.tx)
+	return this.storm.saveEntity(i, this)
 }
 
 // commit transaction

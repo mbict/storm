@@ -28,6 +28,9 @@ type Storm struct {
 	log       *log.Logger
 }
 
+//storm
+type DB Storm
+
 func Open(driverName string, dataSourceName string) (*Storm, error) {
 	db, err := sql.Open(driverName, dataSourceName)
 	return &Storm{
@@ -76,11 +79,23 @@ func (this *Storm) Find(i interface{}, where ...interface{}) error {
 }
 
 func (this *Storm) Delete(i interface{}) error {
-	return this.deleteEntity(i, this.db)
+	tx := this.Begin()
+	err := this.deleteEntity(i, tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (this *Storm) Save(i interface{}) error {
-	return this.saveEntity(i, this.db)
+	tx := this.Begin()
+	err := this.saveEntity(i, tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (this *Storm) Begin() *Transaction {
@@ -162,7 +177,7 @@ func (this *Storm) RegisterStructure(i interface{}, name string) error {
 
 //helpers
 
-func (this *Storm) deleteEntity(i interface{}, db sqlCommon) (err error) {
+func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	v := reflect.Indirect(reflect.ValueOf(i))
 	if v.Kind() != reflect.Struct {
 		return errors.New("Provided input is not a structure type")
@@ -179,11 +194,20 @@ func (this *Storm) deleteEntity(i interface{}, db sqlCommon) (err error) {
 		this.log.Printf("`%s` binding : %v", sqlDelete, bind)
 	}
 
-	_, err = db.Exec(sqlDelete, bind...)
-	return err
+	err = tbl.callbacks.invoke(v, "beforeDelete", tx, nil, this)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.DB().Exec(sqlDelete, bind...)
+	if err != nil {
+		return err
+	}
+
+	return tbl.callbacks.invoke(v, "afterDelete", tx, nil, this)
 }
 
-func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
+func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -217,13 +241,20 @@ func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
 		var insert bool = v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
 		if insert == true {
 			//insert
+			err = tbl.callbacks.invoke(v, "beforeInsert", tx, nil, this)
 			sqlQuery, bind = this.generateInsertSQL(v, tbl)
 		} else {
+			err = tbl.callbacks.invoke(v, "beforeUpdate", tx, nil, this)
 			sqlQuery, bind = this.generateUpdateSQL(v, tbl)
 		}
 
+		//no errors on the before callbacks
+		if err != nil {
+			return err
+		}
+
 		//prepare
-		stmt, err := db.Prepare(sqlQuery)
+		stmt, err := tx.DB().Prepare(sqlQuery)
 		if err != nil {
 			return err
 		}
@@ -234,16 +265,25 @@ func (this *Storm) saveEntity(i interface{}, db sqlCommon) error {
 		}
 
 		if insert == true {
-			id, err := this.dialect.InsertAutoIncrement(stmt, bind...)
+			var id int64
+			id, err = this.dialect.InsertAutoIncrement(stmt, bind...)
 			v.FieldByIndex(tbl.aiColumn.goIndex).SetInt(id)
-			return err
+			if err != nil {
+				return err
+			}
+			err = tbl.callbacks.invoke(v, "afterInsert", tx, nil, this)
 		} else {
-			_, err := stmt.Exec(bind...)
-			return err
+			_, err = stmt.Exec(bind...)
+			if err != nil {
+				return err
+			}
+			err = tbl.callbacks.invoke(v, "afterUpdate", tx, nil, this)
 		}
+		return err
 	} else {
 		return errors.New("No PK auto increment field defined dont know yet if to update or insert")
 	}
+
 }
 
 func (this *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []interface{}) {
