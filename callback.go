@@ -13,8 +13,8 @@ var (
 	errorType   = reflect.TypeOf((error)(nil))
 )
 
-func (this callback) invoke(v reflect.Value, callMethod string, ctx Context) error {
-	t, ok := this[callMethod]
+func (cb callback) invoke(v reflect.Value, callMethod string, ctx Context) error {
+	t, ok := cb[callMethod]
 	if !ok {
 		return nil
 	}
@@ -27,7 +27,7 @@ func (this callback) invoke(v reflect.Value, callMethod string, ctx Context) err
 		case contextType:
 			in[i] = reflect.ValueOf(ctx)
 		default:
-			return fmt.Errorf("Value for callback argument not found for type %v", argType)
+			return fmt.Errorf("value for callback argument not found for type %v", argType)
 		}
 	}
 
@@ -40,7 +40,7 @@ func (this callback) invoke(v reflect.Value, callMethod string, ctx Context) err
 	return nil
 }
 
-func (this callback) registerCallback(v reflect.Value, callMethod string) bool {
+func (cb callback) registerCallback(v reflect.Value, callMethod string) bool {
 
 	method, ok := v.Type().MethodByName(callMethod)
 	if !ok || method.PkgPath != "" {
@@ -52,12 +52,12 @@ func (this callback) registerCallback(v reflect.Value, callMethod string) bool {
 		argType := method.Type.In(i + 1)
 		switch argType {
 		case contextType:
-			//we know this type
+			//we know cb type
 		default:
 			return false
 		}
 	}
 
-	this[callMethod] = method
+	cb[callMethod] = method
 	return true
 }

@@ -89,7 +89,7 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 				continue
 			}
 
-			var columnName string = tags["name"]
+			var columnName = tags["name"]
 			if columnName == "" {
 				columnName = camelToSnake(f.Name)
 			}
@@ -103,7 +103,7 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 				case "string":
 					t = reflect.TypeOf(string(""))
 				default:
-					panic(fmt.Sprintf("Unkown override type `%s`", overideType))
+					panic(fmt.Sprintf("unkown override type `%s`", overideType))
 				}
 
 				if !f.Type.ConvertibleTo(t) {

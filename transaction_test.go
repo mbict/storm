@@ -153,9 +153,9 @@ func TestTransaction_Save(t *testing.T) {
 func TestTransaction_Find(t *testing.T) {
 	var (
 		err   error
-		input *testStructure = nil
-		s                    = newTestStormFile()
-		tx1   *Transaction   = s.Begin()
+		input *testStructure
+		s     = newTestStormFile()
+		tx1   = s.Begin()
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
@@ -185,9 +185,9 @@ func TestTransaction_Find(t *testing.T) {
 func TestTransaction_Delete(t *testing.T) {
 	var (
 		err   error
-		input *testStructure = &testStructure{Id: 2, Name: "name delete"}
-		s                    = newTestStormFile()
-		tx1   *Transaction   = s.Begin()
+		input = &testStructure{Id: 2, Name: "name delete"}
+		s     = newTestStormFile()
+		tx1   = s.Begin()
 		res   *sql.Row
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
@@ -216,8 +216,8 @@ func TestTransaction_Commit(t *testing.T) {
 
 	var (
 		err   error
-		input *testStructure = &testStructure{}
-		s                    = newTestStormFile()
+		input = &testStructure{}
+		s     = newTestStormFile()
 		res   *sql.Row
 		tx1   = s.Begin()
 	)
@@ -247,8 +247,8 @@ func TestTransaction_Rollback(t *testing.T) {
 
 	var (
 		err   error
-		input *testStructure = &testStructure{}
-		s                    = newTestStormFile()
+		input = &testStructure{}
+		s     = newTestStormFile()
 		res   *sql.Row
 		tx1   = s.Begin()
 	)

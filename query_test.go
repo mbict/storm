@@ -10,8 +10,8 @@ func TestQuery_SelectRow(t *testing.T) {
 	var (
 		err      error
 		input    testStructure
-		inputPtr *testStructure = nil
-		s                       = newTestStorm()
+		inputPtr *testStructure
+		s        = newTestStorm()
 	)
 
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
@@ -93,9 +93,9 @@ func TestQuery_Select(t *testing.T) {
 	if len(inputPtr) != 3 {
 		t.Fatalf("Expected to get %d records back but got %d", 3, len(inputPtr))
 	}
-	
+
 	//check if slice count is reset, and not appended (bug)
-	inputPtr = []*testStructure{ &testStructure{} }
+	inputPtr = []*testStructure{&testStructure{}}
 	if err = s.Query().Where("id > ?", 1).Select(&inputPtr); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
@@ -103,7 +103,7 @@ func TestQuery_Select(t *testing.T) {
 	if len(inputPtr) != 3 {
 		t.Fatalf("Expected to have %d records inslice but got %d items is slice", 3, len(inputPtr))
 	}
-	
+
 	//find by id
 	input = nil
 	if err = s.Query().Where("id > ?", 1).Select(&input); err != nil {
@@ -118,9 +118,9 @@ func TestQuery_Select(t *testing.T) {
 	if input[0].onInitInvoked != true || input[1].onInitInvoked != true || input[2].onInitInvoked != true {
 		t.Errorf("OnInit function not invoked")
 	}
-	
+
 	//check if slice count is reset, and not appended (bug)
-	input = []testStructure{ testStructure{} }
+	input = []testStructure{testStructure{}}
 	if err = s.Query().Where("id > ?", 1).Select(&input); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}

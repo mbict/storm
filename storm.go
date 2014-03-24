@@ -13,6 +13,7 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
+//Context interface for Transaction and Query
 type Context interface {
 	DB() sqlCommon
 	Storm() *Storm
@@ -31,6 +32,7 @@ type Context interface {
 	logger() *log.Logger
 }
 
+//Storm structure
 type Storm struct {
 	db        *sql.DB
 	dialect   dialect.Dialect
@@ -39,9 +41,10 @@ type Storm struct {
 	log       *log.Logger
 }
 
-//storm
+//DB is a alias for Storm
 type DB Storm
 
+//Open opens a new connection to the datastore
 func Open(driverName string, dataSourceName string) (*Storm, error) {
 	db, err := sql.Open(driverName, dataSourceName)
 	return &Storm{
@@ -51,57 +54,68 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 	}, err
 }
 
-//get the connection context
-func (this *Storm) DB() sqlCommon {
-	return this.db
+//DB will return the current connection
+func (storm *Storm) DB() sqlCommon {
+	return storm.db
 }
 
-//get the connection context
-func (this *Storm) Storm() *Storm {
-	return this
+//Storm will return the storm instance
+func (storm *Storm) Storm() *Storm {
+	return storm
 }
 
-//ping
-func (this *Storm) Ping() error {
-	return this.db.Ping()
+//Ping performs a ping to the datastore to check if we have a valid connection
+func (storm *Storm) Ping() error {
+	return storm.db.Ping()
 }
 
-//get the current dialect used by the connection
-func (this *Storm) Dialect() dialect.Dialect {
-	return this.dialect
+//Dialect returns the current dialect used by the connection
+func (storm *Storm) Dialect() dialect.Dialect {
+	return storm.dialect
 }
 
-func (this *Storm) Log(log *log.Logger) {
-	this.log = log
+//Log you can assign a new logger
+func (storm *Storm) Log(log *log.Logger) {
+	storm.log = log
 }
 
-func (this *Storm) Query() *Query {
-	return newQuery(this, nil)
+//Query Create a new query object
+func (storm *Storm) Query() *Query {
+	return newQuery(storm, nil)
 }
 
-func (this *Storm) Order(column string, direction SortDirection) *Query {
-	return this.Query().Order(column, direction)
+//Order will create a new query object and set the order
+func (storm *Storm) Order(column string, direction SortDirection) *Query {
+	return storm.Query().Order(column, direction)
 }
 
-func (this *Storm) Where(condition string, bindAttr ...interface{}) *Query {
-	return this.Query().Where(condition, bindAttr...)
+//Where will create a new query object and add a new where statement
+func (storm *Storm) Where(condition string, bindAttr ...interface{}) *Query {
+	return storm.Query().Where(condition, bindAttr...)
 }
 
-func (this *Storm) Limit(limit int) *Query {
-	return this.Query().Limit(limit)
+//Limit will create a new query object and set the limit
+func (storm *Storm) Limit(limit int) *Query {
+	return storm.Query().Limit(limit)
 }
 
-func (this *Storm) Offset(offset int) *Query {
-	return this.Query().Offset(offset)
+//Offset will create a new query object and set the offset
+func (storm *Storm) Offset(offset int) *Query {
+	return storm.Query().Offset(offset)
 }
 
-func (this *Storm) Find(i interface{}, where ...interface{}) error {
-	return this.Query().Find(i, where...)
+//Find will try to retreive the matching structure/entity based on your where statement
+//Example:
+// var row *TestModel
+// s.Find(&row,1)
+func (storm *Storm) Find(i interface{}, where ...interface{}) error {
+	return storm.Query().Find(i, where...)
 }
 
-func (this *Storm) Delete(i interface{}) error {
-	tx := this.Begin()
-	err := this.deleteEntity(i, tx)
+//Delete will delete the provided structure from the datastore
+func (storm *Storm) Delete(i interface{}) error {
+	tx := storm.Begin()
+	err := storm.deleteEntity(i, tx)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -109,9 +123,10 @@ func (this *Storm) Delete(i interface{}) error {
 	return tx.Commit()
 }
 
-func (this *Storm) Save(i interface{}) error {
-	tx := this.Begin()
-	err := this.saveEntity(i, tx)
+//Save will insert or update the provided structure in the datastore
+func (storm *Storm) Save(i interface{}) error {
+	tx := storm.Begin()
+	err := storm.saveEntity(i, tx)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -119,36 +134,39 @@ func (this *Storm) Save(i interface{}) error {
 	return tx.Commit()
 }
 
-func (this *Storm) Begin() *Transaction {
-	return newTransaction(this)
+//Begin will start a new transaction connection
+func (storm *Storm) Begin() *Transaction {
+	return newTransaction(storm)
 }
 
-func (this *Storm) CreateTable(i interface{}) error {
+//CreateTable creates new table in the datastore
+func (storm *Storm) CreateTable(i interface{}) error {
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
 	if t.Kind() != reflect.Struct {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.table(t)
+	tbl, ok := storm.table(t)
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+		return fmt.Errorf("no registered structure for `%s` found", t)
 	}
 
-	sqlCreateTable := this.generateCreateTableSQL(tbl)
-	if this.log != nil {
-		this.log.Println(sqlCreateTable)
+	sqlCreateTable := storm.generateCreateTableSQL(tbl)
+	if storm.log != nil {
+		storm.log.Println(sqlCreateTable)
 	}
 
-	_, err := this.db.Exec(sqlCreateTable)
+	_, err := storm.db.Exec(sqlCreateTable)
 	return err
 }
 
-func (this *Storm) DropTable(i interface{}) error {
+//DropTable removes the table in the datastore
+func (storm *Storm) DropTable(i interface{}) error {
 
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
@@ -156,25 +174,26 @@ func (this *Storm) DropTable(i interface{}) error {
 	}
 
 	if t.Kind() != reflect.Struct {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.table(t)
+	tbl, ok := storm.table(t)
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+		return fmt.Errorf("no registered structure for `%s` found", t)
 	}
 
-	sqlDropTable := this.generateDropTableSQL(tbl)
-	if this.log != nil {
-		this.log.Println(sqlDropTable)
+	sqlDropTable := storm.generateDropTableSQL(tbl)
+	if storm.log != nil {
+		storm.log.Println(sqlDropTable)
 	}
 
-	_, err := this.db.Exec(sqlDropTable)
+	_, err := storm.db.Exec(sqlDropTable)
 	return err
 }
 
-func (this *Storm) RegisterStructure(i interface{}, name string) error {
+//RegisterStructure will parse the provided structure and links it to a table in the datastore
+func (storm *Storm) RegisterStructure(i interface{}, name string) error {
 
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
@@ -182,26 +201,24 @@ func (this *Storm) RegisterStructure(i interface{}, name string) error {
 	}
 
 	if t.Kind() != reflect.Struct {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
-	this.tableLock.Lock()
-	defer this.tableLock.Unlock()
+	storm.tableLock.Lock()
+	defer storm.tableLock.Unlock()
 
-	if _, exists := this.tables[t]; exists == true {
-		return errors.New(fmt.Sprintf("Duplicate structure, '%s' already exists", t))
+	if _, exists := storm.tables[t]; exists == true {
+		return fmt.Errorf("duplicate structure, '%s' already exists", t)
 	}
 
-	this.tables[t] = newTable(reflect.New(t), name)
+	storm.tables[t] = newTable(reflect.New(t), name)
 	return nil
 }
 
-//helpers
-
-func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
+func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("Provided input is not a pointer type")
+		return errors.New("provided input is not a pointer type")
 	}
 
 	v = v.Elem()
@@ -213,18 +230,18 @@ func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	v = reflect.Indirect(v)
 
 	if v.Kind() != reflect.Struct || !v.CanSet() {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.table(v.Type())
+	tbl, ok := storm.table(v.Type())
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
+		return fmt.Errorf("no registered structure for `%s` found", v.Type())
 	}
 
-	sqlDelete, bind := this.generateDeleteSQL(v, tbl)
-	if this.log != nil {
-		this.log.Printf("`%s` binding : %v", sqlDelete, bind)
+	sqlDelete, bind := storm.generateDeleteSQL(v, tbl)
+	if storm.log != nil {
+		storm.log.Printf("`%s` binding : %v", sqlDelete, bind)
 	}
 
 	err = tbl.callbacks.invoke(v.Addr(), "OnDelete", tx)
@@ -240,11 +257,11 @@ func (this *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	return tbl.callbacks.invoke(v.Addr(), "OnPostDelete", tx)
 }
 
-func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
+func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("Provided input is not a pointer type")
+		return errors.New("provided input is not a pointer type")
 	}
 
 	v = v.Elem()
@@ -256,13 +273,13 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 	v = reflect.Indirect(v)
 
 	if v.Kind() != reflect.Struct || !v.CanSet() {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.table(v.Type())
+	tbl, ok := storm.table(v.Type())
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type()))
+		return fmt.Errorf("no registered structure for `%s` found", v.Type())
 	}
 
 	var (
@@ -271,14 +288,14 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 	)
 
 	if tbl.aiColumn != nil {
-		var insert bool = v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
+		insert := v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
 		if insert == true {
 			//insert
 			err = tbl.callbacks.invoke(v.Addr(), "OnInsert", tx)
-			sqlQuery, bind = this.generateInsertSQL(v, tbl)
+			sqlQuery, bind = storm.generateInsertSQL(v, tbl)
 		} else {
 			err = tbl.callbacks.invoke(v.Addr(), "OnUpdate", tx)
-			sqlQuery, bind = this.generateUpdateSQL(v, tbl)
+			sqlQuery, bind = storm.generateUpdateSQL(v, tbl)
 		}
 
 		//no errors on the before callbacks
@@ -293,13 +310,13 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 		}
 		defer stmt.Close()
 
-		if this.log != nil {
-			this.log.Printf("`%s` binding : %v", sqlQuery, bind)
+		if storm.log != nil {
+			storm.log.Printf("`%s` binding : %v", sqlQuery, bind)
 		}
 
 		if insert == true {
 			var id int64
-			id, err = this.dialect.InsertAutoIncrement(stmt, bind...)
+			id, err = storm.dialect.InsertAutoIncrement(stmt, bind...)
 			v.FieldByIndex(tbl.aiColumn.goIndex).SetInt(id)
 			if err != nil {
 				return err
@@ -313,17 +330,15 @@ func (this *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 			err = tbl.callbacks.invoke(v.Addr(), "OnPostUpdate", tx)
 		}
 		return err
-	} else {
-		return errors.New("No PK auto increment field defined dont know yet if to update or insert")
 	}
-
+	return errors.New("no PK auto increment field defined dont know yet if to update or insert")
 }
 
-func (this *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (storm *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []interface{}) {
 	var (
 		sqlQuery bytes.Buffer
-		pos      int = 0
-		bind         = make([]interface{}, 0)
+		pos      int
+		bind     = make([]interface{}, 0)
 	)
 
 	sqlQuery.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tbl.tableName))
@@ -340,12 +355,12 @@ func (this *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []int
 	return sqlQuery.String(), bind
 }
 
-func (this *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (storm *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []interface{}) {
 	var (
 		sqlColumns bytes.Buffer
 		sqlValues  bytes.Buffer
-		pos        int = 0
-		bind           = make([]interface{}, 0)
+		pos        int
+		bind       = make([]interface{}, 0)
 	)
 
 	for _, col := range tbl.columns {
@@ -365,11 +380,11 @@ func (this *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []int
 	return fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", tbl.tableName, sqlColumns.String(), sqlValues.String()), bind
 }
 
-func (this *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (storm *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []interface{}) {
 	var (
 		sqlQuery bytes.Buffer
-		pos      int = 0
-		bind         = make([]interface{}, 0)
+		pos      int
+		bind     = make([]interface{}, 0)
 	)
 
 	sqlQuery.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tbl.tableName))
@@ -405,35 +420,35 @@ func (this *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []int
 	return sqlQuery.String(), bind
 }
 
-func (this *Storm) generateCreateTableSQL(tbl *table) string {
+func (storm *Storm) generateCreateTableSQL(tbl *table) string {
 	var columns []string
 	for _, col := range tbl.columns {
 		column := reflect.Zero(col.goType).Interface()
 		params := ""
 		if tbl.aiColumn == col {
-			params = " " + this.dialect.SqlPrimaryKey(column, 0)
+			params = " " + storm.dialect.SqlPrimaryKey(column, 0)
 		}
 
-		columns = append(columns, this.dialect.Quote(col.columnName)+" "+this.dialect.SqlType(column, 0)+params)
+		columns = append(columns, storm.dialect.Quote(col.columnName)+" "+storm.dialect.SqlType(column, 0)+params)
 	}
 
-	return fmt.Sprintf("CREATE TABLE %s (%s)", this.dialect.Quote(tbl.tableName), strings.Join(columns, ","))
+	return fmt.Sprintf("CREATE TABLE %s (%s)", storm.dialect.Quote(tbl.tableName), strings.Join(columns, ","))
 }
 
-func (this *Storm) generateDropTableSQL(tbl *table) string {
-	return fmt.Sprintf("DROP TABLE %s", this.dialect.Quote(tbl.tableName))
+func (storm *Storm) generateDropTableSQL(tbl *table) string {
+	return fmt.Sprintf("DROP TABLE %s", storm.dialect.Quote(tbl.tableName))
 }
 
 //find a table
-func (this *Storm) table(t reflect.Type) (tbl *table, ok bool) {
+func (storm *Storm) table(t reflect.Type) (tbl *table, ok bool) {
 
-	this.tableLock.RLock()
-	defer this.tableLock.RUnlock()
+	storm.tableLock.RLock()
+	defer storm.tableLock.RUnlock()
 
-	tbl, ok = this.tables[t]
+	tbl, ok = storm.tables[t]
 	return
 }
 
-func (this *Storm) logger() *log.Logger {
-	return this.log
+func (storm *Storm) logger() *log.Logger {
+	return storm.log
 }

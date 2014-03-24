@@ -61,7 +61,7 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 	var (
 		s             *Storm
 		err           error
-		expectedError string = `Provided input is not a structure type`
+		expectedError = `provided input is not a structure type`
 	)
 
 	s, _ = Open(`sqlite3`, `:memory:`)
@@ -84,7 +84,7 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 		t.Fatalf("Expected no error , but got `%v`", err)
 	}
 
-	expectedError = "Duplicate structure, 'storm.testProduct' already exists"
+	expectedError = "duplicate structure, 'storm.testProduct' already exists"
 	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
@@ -95,8 +95,8 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 func TestStorm_Find(t *testing.T) {
 	var (
 		err   error
-		input *testStructure = nil
-		s                    = newTestStorm()
+		input *testStructure
+		s     = newTestStorm()
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 
@@ -165,7 +165,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a pointer type`
+	expectedError = `provided input is not a pointer type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -176,7 +176,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a structure type`
+	expectedError = `provided input is not a structure type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -187,7 +187,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
+	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -196,8 +196,8 @@ func TestStorm_FindWrongInput(t *testing.T) {
 func TestStorm_Delete(t *testing.T) {
 	var (
 		err   error
-		input testStructure = testStructure{Id: 1, Name: "name"}
-		s                   = newTestStormFile()
+		input = testStructure{Id: 1, Name: "name"}
+		s     = newTestStormFile()
 		res   *sql.Row
 	)
 
@@ -241,7 +241,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a pointer type`
+	expectedError = `provided input is not a pointer type`
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -249,7 +249,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 	if err = s.Delete(&inputInt); err == nil {
 		t.Fatalf("Expected a error but got none")
 	}
-	expectedError = `Provided input is not a structure type`
+	expectedError = `provided input is not a structure type`
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -260,7 +260,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a structure type`
+	expectedError = `provided input is not a structure type`
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -271,7 +271,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
+	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -544,7 +544,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a pointer type`
+	expectedError = `provided input is not a pointer type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -555,7 +555,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `Provided input is not a structure type`
+	expectedError = `provided input is not a structure type`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -566,7 +566,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = "No registered structure for `storm.testNonRegisteredStruct` found"
+	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -575,7 +575,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 func TestStorm_CreateTable(t *testing.T) {
 	var (
 		err    error
-		result int = 0
+		result int
 	)
 
 	s, _ := Open(`sqlite3`, `:memory:`)
@@ -603,8 +603,8 @@ func TestStorm_CreateTable(t *testing.T) {
 func TestStorm_DropTable(t *testing.T) {
 	var (
 		err    error
-		result int = 0
-		s          = newTestStorm()
+		result int
+		s      = newTestStorm()
 	)
 
 	//check if table does exists

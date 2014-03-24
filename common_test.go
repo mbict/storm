@@ -123,11 +123,11 @@ func newTestStormFile() *Storm {
 
 func assertEntity(actual *testStructure, expected *testStructure) error {
 	if actual == nil {
-		return errors.New(`Nil record returned`)
+		return errors.New(`nil record returned`)
 	}
 
 	if actual == expected {
-		return errors.New(fmt.Sprintf("Data mismatch expected `%v` but got `%v`", expected, actual))
+		return fmt.Errorf("data mismatch expected `%v` but got `%v`", expected, actual)
 	}
 
 	return nil

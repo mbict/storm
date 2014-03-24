@@ -8,13 +8,17 @@ import (
 	"reflect"
 )
 
+//SortDirection indicates the sort direction used in Order
 type SortDirection string
 
+//ASC ascending order
+//DESC descending order
 const (
 	ASC  SortDirection = "ASC"
 	DESC SortDirection = "DESC"
 )
 
+//Query structure
 type Query struct {
 	ctx    Context
 	where  map[string][]interface{}
@@ -53,100 +57,123 @@ func newQuery(ctx Context, parent *Query) *Query {
 
 }
 
-//Returns a new query object
-func (this *Query) Query() *Query {
-	return newQuery(this.ctx, this)
+//Query Creates a clone of the current query object
+func (query *Query) Query() *Query {
+	return newQuery(query.ctx, query)
 }
 
-func (this *Query) Order(column string, direction SortDirection) *Query {
-	this.order[column] = direction
-	return this
+//Order will set the order
+//Example:
+// q.Order("columnnname", storm.ASC)
+// q.Order("columnnname", storm.DESC)
+func (query *Query) Order(column string, direction SortDirection) *Query {
+	query.order[column] = direction
+	return query
 }
 
-func (this *Query) Where(condition string, bindAttr ...interface{}) *Query {
-	this.where[condition] = bindAttr
-	return this
+//Where adds new where conditions to the query
+//Example:
+// q.Where(1) //automatic uses the pk becomes id = 1
+// q.Where("column = 1") //textual condition
+// q.Where("column = ?", 1) //bind params
+// q.Where("(column = ? OR other = ?)",1,2) //multiple bind params
+func (query *Query) Where(condition string, bindAttr ...interface{}) *Query {
+	query.where[condition] = bindAttr
+	return query
 }
 
-func (this *Query) Limit(limit int) *Query {
-	this.limit = limit
-	return this
+//Limit sets the limit for select
+func (query *Query) Limit(limit int) *Query {
+	query.limit = limit
+	return query
 }
 
-func (this *Query) Offset(offset int) *Query {
-	this.offset = offset
-	return this
+//Offset sets the offset for select
+func (query *Query) Offset(offset int) *Query {
+	query.offset = offset
+	return query
 }
 
-func (this *Query) Find(i interface{}, where ...interface{}) error {
-
+//Find will try to retreive the matching structure/entity based on your where statement
+func (query *Query) Find(i interface{}, where ...interface{}) error {
 	if len(where) >= 1 {
-		return this.Query().fetchRow(i, where...)
+		return query.Query().fetchRow(i, where...)
 	}
-	return this.fetchRow(i)
+	return query.fetchRow(i)
 }
 
-func (this *Query) Select(i interface{}) error {
-	return this.fetchAll(i)
+//Select will execute a query and return all the results to i
+//Example:
+// var resultSet []*TestModel
+// q.Select(&resultSet)
+func (query *Query) Select(i interface{}) error {
+	return query.fetchAll(i)
 }
 
-func (this *Query) SelectRow(i interface{}) error {
-	return this.Find(i)
+//SelectRow will execute a query and return one results to i
+//Example:
+// var result *TestModel
+// q.SelectRow(&result)
+func (query *Query) SelectRow(i interface{}) error {
+	return query.Find(i)
 }
 
-func (this *Query) Count(i interface{}) (int64, error) {
-	return this.fetchCount(i)
+//Count will execute a query and return the resulting rows Select will return
+//Example:
+// count, err := q.Count((*TestModel)(nil))
+func (query *Query) Count(i interface{}) (int64, error) {
+	return query.fetchCount(i)
 }
 
 //create additional where stements from arguments
-func (this *Query) applyWhere(tbl *table, where ...interface{}) error {
+func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 
 	switch t := where[0].(type) {
 	case string:
-		this.Where(t, where[1:]...)
+		query.Where(t, where[1:]...)
 	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64, sql.NullInt64:
 
 		if len(tbl.keys) == 1 {
 			if len(where) == 1 {
-				this.Where(fmt.Sprintf("%s = ?", this.ctx.Dialect().Quote(tbl.keys[0].columnName)), where...)
+				query.Where(fmt.Sprintf("%s = ?", query.ctx.Dialect().Quote(tbl.keys[0].columnName)), where...)
 			} else {
-				return errors.New("Not implemented having multiple pk values for find")
+				return errors.New("not implemented having multiple pk values for find")
 			}
 		} else {
-			return errors.New("Not implemented having multiple pks for find")
+			return errors.New("not implemented having multiple pks for find")
 		}
 	default:
-		return errors.New("Unsupported pk find type")
+		return errors.New("unsupported pk find type")
 	}
 
 	return nil
 }
 
 //fetch a single row into a element
-func (this *Query) fetchCount(i interface{}) (cnt int64, err error) {
+func (query *Query) fetchCount(i interface{}) (cnt int64, err error) {
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
 	if t.Kind() != reflect.Struct {
-		return 0, errors.New("Provided input is not a structure type")
+		return 0, errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.ctx.table(t)
+	tbl, ok := query.ctx.table(t)
 	if !ok {
-		return 0, errors.New(fmt.Sprintf("No registered structure for `%s` found", t))
+		return 0, fmt.Errorf("no registered structure for `%s` found", t)
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := this.generateCountSQL(tbl)
+	sqlQuery, bind := query.generateCountSQL(tbl)
 
-	if this.ctx.logger() != nil {
-		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	if query.ctx.logger() != nil {
+		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
 
-	stmt, err := this.ctx.DB().Prepare(sqlQuery)
+	stmt, err := query.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return 0, err
 	}
@@ -161,10 +188,10 @@ func (this *Query) fetchCount(i interface{}) (cnt int64, err error) {
 }
 
 //fetch a single row into a element
-func (this *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
+func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("Provided input is not a pointer type")
+		return errors.New("provided input is not a pointer type")
 	}
 
 	v = v.Elem()
@@ -176,29 +203,29 @@ func (this *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	v = reflect.Indirect(v)
 
 	if v.Kind() != reflect.Struct || !v.CanSet() {
-		return errors.New("Provided input is not a structure type")
+		return errors.New("provided input is not a structure type")
 	}
 
 	//find the table
-	tbl, ok := this.ctx.table(v.Type())
+	tbl, ok := query.ctx.table(v.Type())
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", v.Type().String()))
+		return fmt.Errorf("no registered structure for `%s` found", v.Type().String())
 	}
 
 	//add the last minute where
 	if len(where) >= 1 {
-		if err = this.applyWhere(tbl, where...); err != nil {
+		if err = query.applyWhere(tbl, where...); err != nil {
 			return err
 		}
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := this.generateSelectSQL(tbl)
-	if this.ctx.logger() != nil {
-		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	sqlQuery, bind := query.generateSelectSQL(tbl)
+	if query.ctx.logger() != nil {
+		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
 
-	stmt, err := this.ctx.DB().Prepare(sqlQuery)
+	stmt, err := query.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return err
 	}
@@ -218,19 +245,19 @@ func (this *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		return err
 	}
 
-	return tbl.callbacks.invoke(v.Addr(), "OnInit", this.ctx)
+	return tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx)
 }
 
 //fetch a single row into a element
-func (this *Query) fetchAll(i interface{}) error {
+func (query *Query) fetchAll(i interface{}) error {
 
 	ts := reflect.TypeOf(i)
 	if ts.Kind() != reflect.Ptr {
-		return errors.New("Provided input is not a pointer type")
+		return errors.New("provided input is not a pointer type")
 	}
 
 	if ts.Elem().Kind() != reflect.Slice {
-		return errors.New("Provided input pointer is not a slice type")
+		return errors.New("provided input pointer is not a slice type")
 	}
 
 	//get the element type
@@ -242,22 +269,22 @@ func (this *Query) fetchAll(i interface{}) error {
 	}
 
 	if t.Kind() != reflect.Struct {
-		return errors.New("Provided input slice has no structure type")
+		return errors.New("provided input slice has no structure type")
 	}
 
 	//find the table
-	tbl, ok := this.ctx.table(t)
+	tbl, ok := query.ctx.table(t)
 	if !ok {
-		return errors.New(fmt.Sprintf("No registered structure for `%s` found", t.String()))
+		return fmt.Errorf("no registered structure for `%s` found", t.String())
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := this.generateSelectSQL(tbl)
-	if this.ctx.logger() != nil {
-		this.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
+	sqlQuery, bind := query.generateSelectSQL(tbl)
+	if query.ctx.logger() != nil {
+		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
 
-	stmt, err := this.ctx.DB().Prepare(sqlQuery)
+	stmt, err := query.ctx.DB().Prepare(sqlQuery)
 	if err != nil {
 		return err
 	}
@@ -272,7 +299,7 @@ func (this *Query) fetchAll(i interface{}) error {
 
 	vs := reflect.ValueOf(i).Elem()
 	vs.SetLen(0)
-	
+
 	for {
 		if !rows.Next() {
 			// if error occured return rawselect
@@ -296,7 +323,7 @@ func (this *Query) fetchAll(i interface{}) error {
 			return err
 		}
 
-		if err = tbl.callbacks.invoke(v, "OnInit", this.ctx); err != nil {
+		if err = tbl.callbacks.invoke(v, "OnInit", query.ctx); err != nil {
 			return err
 		}
 
@@ -308,7 +335,7 @@ func (this *Query) fetchAll(i interface{}) error {
 	}
 }
 
-func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
+func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
@@ -330,13 +357,13 @@ func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	sql.WriteString(fmt.Sprintf(" FROM `%v`", tbl.tableName))
 
 	//add where
-	if len(this.where) > 0 {
+	if len(query.where) > 0 {
 
 		sql.WriteString(" WHERE ")
 
 		//create where keys
 		pos = 0
-		for cond, attr := range this.where {
+		for cond, attr := range query.where {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
@@ -348,10 +375,10 @@ func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	}
 
 	//add order
-	if len(this.order) > 0 {
+	if len(query.order) > 0 {
 		sql.WriteString(" ORDER BY ")
 		pos = 0
-		for col, dir := range this.order {
+		for col, dir := range query.order {
 			if pos > 0 {
 				sql.WriteString(", ")
 			}
@@ -361,35 +388,35 @@ func (this *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	}
 
 	//add limit
-	if this.limit > 0 {
-		sql.WriteString(fmt.Sprintf(" LIMIT %d", this.limit))
+	if query.limit > 0 {
+		sql.WriteString(fmt.Sprintf(" LIMIT %d", query.limit))
 	}
 
 	//add offset
-	if this.offset > 0 {
-		sql.WriteString(fmt.Sprintf(" OFFSET %d", this.offset))
+	if query.offset > 0 {
+		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
 	}
 
 	return sql.String(), bindVars
 }
 
-func (this *Query) generateCountSQL(tbl *table) (string, []interface{}) {
+func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
 
 	var bindVars []interface{}
 	var sql bytes.Buffer
 	var pos int
 
 	//add table name
-	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM %s", this.ctx.Dialect().Quote(tbl.tableName)))
+	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM %s", query.ctx.Dialect().Quote(tbl.tableName)))
 
 	//add where
-	if len(this.where) > 0 {
+	if len(query.where) > 0 {
 
 		sql.WriteString(" WHERE ")
 
 		//create where keys
 		pos = 0
-		for cond, attr := range this.where {
+		for cond, attr := range query.where {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}

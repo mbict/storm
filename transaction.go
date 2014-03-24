@@ -8,6 +8,7 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
+//Transaction structure
 type Transaction struct {
 	storm *Storm
 	tx    *sql.Tx
@@ -26,68 +27,75 @@ func newTransaction(s *Storm) *Transaction {
 	}
 }
 
-//get the connection context
-func (this *Transaction) DB() sqlCommon {
-	return this.tx
+//DB will return the current connection
+func (transaction *Transaction) DB() sqlCommon {
+	return transaction.tx
 }
 
-//get the storm context
-func (this *Transaction) Storm() *Storm {
-	return this.storm
+//Storm will return the storm instance
+func (transaction *Transaction) Storm() *Storm {
+	return transaction.storm
 }
 
-//get the current dialect used by the connection
-func (this *Transaction) Dialect() dialect.Dialect {
-	return this.storm.Dialect()
+//Dialect returns the current dialect used by the connection
+func (transaction *Transaction) Dialect() dialect.Dialect {
+	return transaction.storm.Dialect()
 }
 
-// create a new query subobject
-func (this *Transaction) Query() *Query {
-	return newQuery(this, nil)
+//Query Creates a clone of the current query object
+func (transaction *Transaction) Query() *Query {
+	return newQuery(transaction, nil)
 }
 
-func (this *Transaction) Order(column string, direction SortDirection) *Query {
-	return this.Query().Order(column, direction)
+//Order will set the order
+func (transaction *Transaction) Order(column string, direction SortDirection) *Query {
+	return transaction.Query().Order(column, direction)
 }
 
-func (this *Transaction) Where(condition string, bindAttr ...interface{}) *Query {
-	return this.Query().Where(condition, bindAttr...)
+//Where adds new where conditions to the query
+func (transaction *Transaction) Where(condition string, bindAttr ...interface{}) *Query {
+	return transaction.Query().Where(condition, bindAttr...)
 }
 
-func (this *Transaction) Limit(limit int) *Query {
-	return this.Query().Limit(limit)
+//Limit sets the limit for select
+func (transaction *Transaction) Limit(limit int) *Query {
+	return transaction.Query().Limit(limit)
 }
 
-func (this *Transaction) Offset(offset int) *Query {
-	return this.Query().Offset(offset)
+//Offset sets the offset for select
+func (transaction *Transaction) Offset(offset int) *Query {
+	return transaction.Query().Offset(offset)
 }
 
-func (this *Transaction) Find(i interface{}, where ...interface{}) error {
-	return this.Query().fetchRow(i, where...)
+//Find will try to retreive the matching structure/entity based on your where statement
+func (transaction *Transaction) Find(i interface{}, where ...interface{}) error {
+	return transaction.Query().fetchRow(i, where...)
 }
 
-func (this *Transaction) Delete(i interface{}) error {
-	return this.storm.deleteEntity(i, this)
+//Delete will delete the provided structure from the datastore
+func (transaction *Transaction) Delete(i interface{}) error {
+	return transaction.storm.deleteEntity(i, transaction)
 }
 
-func (this *Transaction) Save(i interface{}) error {
-	return this.storm.saveEntity(i, this)
+//Save will insert or update the provided structure in the datastore
+func (transaction *Transaction) Save(i interface{}) error {
+	return transaction.storm.saveEntity(i, transaction)
 }
 
-// commit transaction
-func (this *Transaction) Commit() error {
-	return this.tx.Commit()
+//Commit will commit the current transaction and closes
+func (transaction *Transaction) Commit() error {
+	return transaction.tx.Commit()
 }
 
-// rollback the transaction
-func (this *Transaction) Rollback() error {
-	return this.tx.Rollback()
+//Rollback will undo all mutations to the datastore in this transaction and closes
+func (transaction *Transaction) Rollback() error {
+	return transaction.tx.Rollback()
 }
 
-func (this *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
-	return this.storm.table(t)
+func (transaction *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
+	return transaction.storm.table(t)
 }
 
-func (this *Transaction) logger() *log.Logger {
-	return this.storm.log
+func (transaction *Transaction) logger() *log.Logger {
+	return transaction.storm.log
 }
