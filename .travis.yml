@@ -9,8 +9,3 @@ before_install:
  - go get github.com/mattn/go-sqlite3
 script:
  - go test -v ./...
-after_success:
- - go get code.google.com/p/go.tools/cmd/cover
- - go get github.com/mattn/goveralls
- - go test -covermode=count -coverprofile=profile.cov
- - goveralls -coverprofile=profile.cov -service=travis-ci
