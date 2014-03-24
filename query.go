@@ -271,6 +271,8 @@ func (this *Query) fetchAll(i interface{}) error {
 	defer rows.Close()
 
 	vs := reflect.ValueOf(i).Elem()
+	vs.SetLen(0)
+	
 	for {
 		if !rows.Next() {
 			// if error occured return rawselect

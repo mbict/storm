@@ -67,6 +67,7 @@ func TestQuery_Select(t *testing.T) {
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (4, 'name 4')")
 
 	//empty result, no match PTR
+	inputPtr = nil
 	if err = s.Query().Where("id > ?", 999).Select(&inputPtr); err != sql.ErrNoRows {
 		t.Fatalf("Got wrong error back, expected `%v` but got `%v`", sql.ErrNoRows, err)
 	}
@@ -92,8 +93,19 @@ func TestQuery_Select(t *testing.T) {
 	if len(inputPtr) != 3 {
 		t.Fatalf("Expected to get %d records back but got %d", 3, len(inputPtr))
 	}
+	
+	//check if slice count is reset, and not appended (bug)
+	inputPtr = []*testStructure{ &testStructure{} }
+	if err = s.Query().Where("id > ?", 1).Select(&inputPtr); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
 
+	if len(inputPtr) != 3 {
+		t.Fatalf("Expected to have %d records inslice but got %d items is slice", 3, len(inputPtr))
+	}
+	
 	//find by id
+	input = nil
 	if err = s.Query().Where("id > ?", 1).Select(&input); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
@@ -105,6 +117,16 @@ func TestQuery_Select(t *testing.T) {
 	//check if callback OnInit is called
 	if input[0].onInitInvoked != true || input[1].onInitInvoked != true || input[2].onInitInvoked != true {
 		t.Errorf("OnInit function not invoked")
+	}
+	
+	//check if slice count is reset, and not appended (bug)
+	input = []testStructure{ testStructure{} }
+	if err = s.Query().Where("id > ?", 1).Select(&input); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if len(input) != 3 {
+		t.Fatalf("Expected to have %d records inslice but got %d items is slice", 3, len(input))
 	}
 }
 

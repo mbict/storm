@@ -61,6 +61,11 @@ func (this *Storm) Storm() *Storm {
 	return this
 }
 
+//ping
+func (this *Storm) Ping() error {
+	return this.db.Ping()
+}
+
 //get the current dialect used by the connection
 func (this *Storm) Dialect() dialect.Dialect {
 	return this.dialect
