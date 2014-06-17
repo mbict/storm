@@ -54,6 +54,16 @@ func Open(driverName string, dataSourceName string) (*Storm, error) {
 	}, err
 }
 
+//SetMaxIdleConns will the the maxiumum of idle connections
+func (storm *Storm) SetMaxIdleConns(n int) {
+	storm.db.SetMaxIdleConns(n)
+}
+
+//SetMaxOpenConns will the the maxiumum open connections
+func (storm *Storm) SetMaxOpenConns(n int) {
+	storm.db.SetMaxOpenConns(n)
+}
+
 //DB will return the current connection
 func (storm *Storm) DB() sqlCommon {
 	return storm.db
