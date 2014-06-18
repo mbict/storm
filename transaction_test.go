@@ -11,15 +11,13 @@ func TestTransaction_Where(t *testing.T) {
 		s  = newTestStorm()
 		tx = s.Begin()
 		q  = tx.Where("id = ?", 1)
-		v  []interface{}
-		ok bool
 	)
 
-	if v, ok = q.where["id = ?"]; ok != true {
-		t.Fatalf("Where statement not found in query")
+	if q.where[0].Statement != "id = ?" {
+		t.Fatalf("Where statement differs in query")
 	}
 
-	if len(v) != 1 && v[0].(int) != 1 {
+	if len(q.where[0].Bindings) != 1 && q.where[0].Bindings[0].(int) != 1 {
 		t.Fatalf("Expected where statement value")
 	}
 }
@@ -30,15 +28,13 @@ func TestTransaction_Order(t *testing.T) {
 		s  = newTestStorm()
 		tx = s.Begin()
 		q  = tx.Order("test", ASC)
-		v  SortDirection
-		ok bool
 	)
 
-	if v, ok = q.order["test"]; ok != true {
-		t.Fatalf("Order statement not found in query")
+	if q.order[0].Statement != "test" {
+		t.Fatalf("Order statement differs in query")
 	}
 
-	if v != ASC {
+	if q.order[0].Direction != ASC {
 		t.Fatalf("Expected order statement value")
 	}
 }

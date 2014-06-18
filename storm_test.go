@@ -637,17 +637,15 @@ func TestStorm_DropTable(t *testing.T) {
 //Test where passtrough
 func TestStorm_Where(t *testing.T) {
 	var (
-		s  = newTestStorm()
-		q  = s.Where("id = ?", 1)
-		v  []interface{}
-		ok bool
+		s = newTestStorm()
+		q = s.Where("id = ?", 1)
 	)
 
-	if v, ok = q.where["id = ?"]; ok != true {
-		t.Fatalf("Where statement not found in query")
+	if q.where[0].Statement != "id = ?" {
+		t.Fatalf("Where statement differs in query")
 	}
 
-	if len(v) != 1 && v[0].(int) != 1 {
+	if len(q.where[0].Bindings) != 1 && q.where[0].Bindings[0].(int) != 1 {
 		t.Fatalf("Expected where statement value")
 	}
 }
@@ -655,17 +653,15 @@ func TestStorm_Where(t *testing.T) {
 //Test order passtrough
 func TestStorm_Order(t *testing.T) {
 	var (
-		s  = newTestStorm()
-		q  = s.Order("test", ASC)
-		v  SortDirection
-		ok bool
+		s = newTestStorm()
+		q = s.Order("test", ASC)
 	)
 
-	if v, ok = q.order["test"]; ok != true {
-		t.Fatalf("Order statement not found in query")
+	if q.order[0].Statement != "test" {
+		t.Fatalf("Order statement differs in query")
 	}
 
-	if v != ASC {
+	if q.order[0].Direction != ASC {
 		t.Fatalf("Expected order statement value")
 	}
 }

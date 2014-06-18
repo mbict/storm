@@ -9,7 +9,19 @@ import (
 )
 
 //SortDirection indicates the sort direction used in Order
-type SortDirection string
+type(
+	SortDirection string
+	
+	where struct {
+		Statement string
+		Bindings []interface{}
+	}
+	
+	order struct {
+		Statement string
+		Direction SortDirection
+	}
+)
 
 //ASC ascending order
 //DESC descending order
@@ -21,8 +33,8 @@ const (
 //Query structure
 type Query struct {
 	ctx    Context
-	where  map[string][]interface{}
-	order  map[string]SortDirection
+	where  []where
+	order  []order
 	offset int
 	limit  int
 }
@@ -37,20 +49,13 @@ func newQuery(ctx Context, parent *Query) *Query {
 
 	if parent != nil {
 		//clone parent
-		q.where = make(map[string][]interface{}, len(parent.where))
-		for k, v := range parent.where {
-			q.where[k] = v
-		}
-
-		q.order = make(map[string]SortDirection, len(parent.order))
-		for k, v := range parent.order {
-			q.order[k] = v
-		}
+		q.where = parent.where
+		q.order = parent.order
 		q.offset = parent.offset
 		q.limit = parent.limit
 	} else {
-		q.where = make(map[string][]interface{}, 0)
-		q.order = make(map[string]SortDirection, 0)
+		q.where = make([]where, 0)
+		q.order = make([]order, 0)
 	}
 
 	return &q
@@ -67,7 +72,7 @@ func (query *Query) Query() *Query {
 // q.Order("columnnname", storm.ASC)
 // q.Order("columnnname", storm.DESC)
 func (query *Query) Order(column string, direction SortDirection) *Query {
-	query.order[column] = direction
+	query.order = append(query.order, order{column, direction})
 	return query
 }
 
@@ -78,7 +83,7 @@ func (query *Query) Order(column string, direction SortDirection) *Query {
 // q.Where("column = ?", 1) //bind params
 // q.Where("(column = ? OR other = ?)",1,2) //multiple bind params
 func (query *Query) Where(condition string, bindAttr ...interface{}) *Query {
-	query.where[condition] = bindAttr
+	query.where = append(query.where, where{condition, bindAttr})
 	return query
 }
 
@@ -363,13 +368,13 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 
 		//create where keys
 		pos = 0
-		for cond, attr := range query.where {
+		for _, cond := range query.where {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
-			sql.WriteString(cond)
+			sql.WriteString(cond.Statement)
 
-			bindVars = append(bindVars, attr...)
+			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
 	}
@@ -378,11 +383,11 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	if len(query.order) > 0 {
 		sql.WriteString(" ORDER BY ")
 		pos = 0
-		for col, dir := range query.order {
+		for _, col := range query.order {
 			if pos > 0 {
 				sql.WriteString(", ")
 			}
-			sql.WriteString(fmt.Sprintf("`%s` %s", col, dir))
+			sql.WriteString(fmt.Sprintf("`%s` %s", col.Statement, col.Direction))
 			pos++
 		}
 	}
@@ -416,13 +421,13 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
 
 		//create where keys
 		pos = 0
-		for cond, attr := range query.where {
+		for _, cond := range query.where {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
-			sql.WriteString(cond)
+			sql.WriteString(cond.Statement)
 
-			bindVars = append(bindVars, attr...)
+			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
 	}
