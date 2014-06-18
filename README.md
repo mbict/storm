@@ -23,9 +23,71 @@ type Customer struct {
 	Hidden           string `db:"ignore"
 }
 
-s, err := storm.Open("sqlite3", ":memory:")
-s.AddStructure(Customer{}, "customer")
-s.AddStructure((*Customer)(nil), "customer")
+db, err := storm.Open("sqlite3", ":memory:")
+```
+
+**Set connection limits**
+```GO
+db.SetMaxIdleConns(10)
+db.SetMaxOpenConns(100)
+````
+
+**Add query logging**
+```GO
+db.Log(log.New(os.Stdout, "[storm] ", 0))
+```
+
+**Check connection**
+```GO
+db.Ping()
+````
+
+**Add table/structures**
+```GO
+//object instance
+db.AddStructure(Customer{}, "customer")
+
+//or with a null pointer instance
+db.AddStructure((*Customer)(nil), "customer")
+```
+
+**Entity callbacks/events**
+
+The following events are will be triggered if they are defined in the entity
+
+* OnInsert
+* OnPostInsert
+* OnUpdate
+* OnPostUpdate
+* OnDelete
+* OnPostDelete
+* OnInit
+
+You can define the optional error type, if you return a error the current method save/delete/select will stop what is was dooing and return the error.
+
+You can also define a function attribute to get the current transaction context.
+
+Valid callback notations
+
+```GO
+OnInit(){
+	...
+}
+
+//error return only
+OnInit() error{
+	...
+}
+
+//context only
+OnInit(ctx *Context) {
+	...
+}
+
+//context and error return
+OnInit(ctx *Context) error {
+	...
+}
 ```
 
 **Insert a new entity**
@@ -34,59 +96,63 @@ Pass the new structure and leave all pks zero
 After a successful save all pks will be filled
 ```GO
 newCustomer := Customer{0, "Firstname", "Lastname"}
-err := s.Save(&newCustomer)
+err := db.Save(&newCustomer)
 ```
 
 **Get one entity by its primary key**
 ```GO
 var customer Customer
-obj, err := s.Find(&customer, 1)
+obj, err := db.Find(&customer, 1)
 ```
 
 **Update a entity**
 ```GO
 customer.Lastname = "LastlastName"
-err := s.Save(&customer)
+err := db.Save(&customer)
 ```
 
 **Delete a entity**
 ```GO
-err := s.Delete(&customer)
+err := db.Delete(&customer)
 ```
 
-**Get all the enties method 1**
+**Get all the entities method **
 ```GO
-q := s.Query()
+q := db.Query()
 var customers []Customer
-_, err := q.Where("name LIKE ?", "%test%").Select(&customers)
+err := q.Where("name LIKE ?", "%test%").Select(&customers)
 ```
 
-
+**Get one entity method **
+```GO
+q := db.Query()
+var customer Customer
+err := q.Where("name LIKE ?", "%test%").SelectRow(&customer)
+```
 
 **Get the count**
 ```GO
-q := s.Query()
+q := db.Query()
 count, err := q.Where("name LIKE ?", "%test%").Count((*Customer)(nil))
 ```
 
-
 **Start transaction, commit or rollback**
 ```GO
-tx := s.Begin()
+tx := db.Begin()
 tx.Save(...... etc
 tx.Commit()
-or
+//or
 tx.Rollback()
 ```
 
-
 **Create table**
 ```GO
-s.CreateTable((*Customer)(nil))
+db.CreateTable((*Customer)(nil))
 ```
-
 
 **Drop table**
 ```GO
-s.DropTable((*Customer)(nil))
+db.DropTable((*Customer)(nil))
 ```
+
+Thats it for now, Enjoy
