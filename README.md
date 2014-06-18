@@ -63,9 +63,9 @@ The following events are will be triggered if they are defined in the entity
 * OnPostDelete
 * OnInit
 
-You can define the optional error type, if you return a error the current method save/delete/select will stop what is was dooing and return the error.
+If you return a error on a callback, the current method that triggered the event (save/delete/select) will stop what is was dooing and return the error.
 
-You can also define a function attribute to get the current transaction context.
+When you need the current working context (transaction or non transactional) you can define a the storm.Context type as first function attribute.
 
 Valid callback notations
 
@@ -80,12 +80,12 @@ OnInit() error{
 }
 
 //context only
-OnInit(ctx *Context) {
+OnInit(ctx *storm.Context) {
 	...
 }
 
 //context and error return
-OnInit(ctx *Context) error {
+OnInit(ctx *storm.Context) error {
 	...
 }
 ```
