@@ -17,6 +17,11 @@ type testCustomType int64
 
 func (tct *testCustomType) Scan(value interface{}) (err error) {
 	switch v := value.(type) {
+	case []byte:
+		var in int
+		in, err = strconv.Atoi(string(v))
+		*tct = (testCustomType)(in)
+		return
 	case string:
 		var in int
 		in, err = strconv.Atoi(v)
@@ -29,11 +34,11 @@ func (tct *testCustomType) Scan(value interface{}) (err error) {
 		*tct = (testCustomType)(v)
 		return
 	}
-	return nil
+	return errors.New("Cannot convert input to a custom type")
 }
 
-func (tct *testCustomType) Value() (driver.Value, error) {
-	return int64(*tct), nil
+func (tct testCustomType) Value() (driver.Value, error) {
+	return int64(tct), nil
 }
 
 type testStructure struct {
@@ -73,6 +78,28 @@ type testAllTypeStructure struct {
 	NullInt        sql.NullInt64
 	NullFloat      sql.NullFloat64
 	NullBool       sql.NullBool
+}
+
+
+type testTable1 struct {
+	Id int
+	Name string
+	Table2 *testTable2 `db:oneToMany(testTable2, id)`
+	Table2Id int `db:oneToMany(testTable2, id)`
+}
+
+type testTable2 struct {
+	Id int
+	Name string
+	
+	//This will be automaticly populated
+	Tables1 []*testTable1 `db:ManyToMany(testTableRelation)`
+}
+
+type testTableRelation struct {
+	Id int
+	Table1Id int `db:oneToMany(testTable1, id)`
+	Table2Id int `db:oneToMany(testTable2, id)`
 }
 
 func newTestStorm() *Storm {
