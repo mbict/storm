@@ -68,8 +68,9 @@ func (transaction *Transaction) Offset(offset int) *Query {
 }
 
 //Find will try to retreive the matching structure/entity based on your where statement
+//You can priovide a slice or a single element
 func (transaction *Transaction) Find(i interface{}, where ...interface{}) error {
-	return transaction.Query().fetchRow(i, where...)
+	return transaction.Query().Find(i, where...)
 }
 
 //Delete will delete the provided structure from the datastore

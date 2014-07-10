@@ -146,7 +146,7 @@ func TestTransaction_Save(t *testing.T) {
 	tx1.tx.Rollback()
 }
 
-func TestTransaction_Find(t *testing.T) {
+func TestTransaction_Find_Single(t *testing.T) {
 	var (
 		err   error
 		input *testStructure
@@ -155,6 +155,7 @@ func TestTransaction_Find(t *testing.T) {
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
 	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
+	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (3, 'name 3nd')")
 
 	//find by id (transaction)
 	input = nil
@@ -177,6 +178,69 @@ func TestTransaction_Find(t *testing.T) {
 	//cleanup
 	tx1.tx.Rollback()
 }
+
+func TestTransaction_Find_Slice(t *testing.T) {
+	var (
+		err   error
+		input []*testStructure
+		s     = newTestStormFile()
+		tx1   = s.Begin()
+	)
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
+	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (3, 'name 3nd')")
+
+	//find by id (transaction)
+	input = nil
+	if err = tx1.Find(&input, 1); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+	
+	if len(input) != 1 {
+		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
+	}
+
+	//find by id
+	input = nil
+	if err = tx1.Find(&input, 2); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if len(input) != 1 {
+		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
+	}
+	
+	//get all (transaction)
+	input = nil
+	if err = tx1.Find(&input); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if len(input) != 3 {
+		t.Fatalf("Expected to get %d record back but got %d", 3, len(input))
+	}
+
+
+	//find by id (transaction)
+	input = nil
+	if err = s.Find(&input, 2); err != sql.ErrNoRows {
+		t.Fatalf("Expected to get no results back but got error `%v`", err)
+	}
+	
+	//get all
+	input = nil
+	if err = s.Find(&input); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if len(input) != 1 {
+		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
+	}
+	
+	//cleanup
+	tx1.tx.Rollback()
+}
+
 
 func TestTransaction_Delete(t *testing.T) {
 	var (

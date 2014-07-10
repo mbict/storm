@@ -153,9 +153,10 @@ func assertEntity(actual *testStructure, expected *testStructure) error {
 		return errors.New(`nil record returned`)
 	}
 
-	if actual == expected {
+	if actual.Id != expected.Id || actual.Name != expected.Name {
 		return fmt.Errorf("data mismatch expected `%v` but got `%v`", expected, actual)
 	}
+	
 
 	return nil
 }

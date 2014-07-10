@@ -92,26 +92,37 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 
 }
 
-func TestStorm_Find(t *testing.T) {
+func TestStorm_Find_Single(t *testing.T) {
 	var (
 		err   error
 		input *testStructure
 		s     = newTestStorm()
 	)
 	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
 
 	//empty result, no match
 	if err = s.Find(&input, 999); err != sql.ErrNoRows {
 		t.Fatalf("Got wrong error back, expected `%v` but got `%v`", sql.ErrNoRows, err)
 	}
 
-	//find by id
+	//find first result
 	input = nil
-	if err = s.Find(&input, 1); err != nil {
+	if err = s.Find(&input); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
 
 	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
+		t.Fatalf("Error: %v", err)
+	}
+
+	//find by id
+	input = nil
+	if err = s.Find(&input, 2); err != nil {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{Id: 2, Name: "name 2nd"}); err != nil {
 		t.Fatalf("Error: %v", err)
 	}
 
@@ -337,7 +348,7 @@ func TestStorm_Save(t *testing.T) {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
 
-	if err = assertEntity(input, &testStructure{Id: 3, Name: "test insert"}); err != nil {
+	if err = assertEntity(input, &testStructure{Id: 3, Name: "test inserted"}); err != nil {
 		t.Fatalf(err.Error())
 	}
 

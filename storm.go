@@ -13,6 +13,8 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
+var ErrNoRows = sql.ErrNoRows
+
 //Context interface for Transaction and Query
 type Context interface {
 	DB() sqlCommon

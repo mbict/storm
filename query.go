@@ -100,27 +100,30 @@ func (query *Query) Offset(offset int) *Query {
 }
 
 //Find will try to retreive the matching structure/entity based on your where statement
+//you can provide a slice or a single element
 func (query *Query) Find(i interface{}, where ...interface{}) error {
+
+	//slice given	
+	if reflect.Indirect( reflect.ValueOf(i) ).Kind() == reflect.Slice {
+		if len(where) >= 1 {
+			return query.Query().fetchAll(i, where...)
+		}
+		return query.fetchAll(i)
+	} 
+
+	//single context
 	if len(where) >= 1 {
 		return query.Query().fetchRow(i, where...)
 	}
 	return query.fetchRow(i)
 }
 
-//Select will execute a query and return all the results to i
-//Example:
-// var resultSet []*TestModel
-// q.Select(&resultSet)
-func (query *Query) Select(i interface{}) error {
-	return query.fetchAll(i)
-}
-
-//SelectRow will execute a query and return one results to i
+//First will execute the query and return one result to i
 //Example:
 // var result *TestModel
-// q.SelectRow(&result)
-func (query *Query) SelectRow(i interface{}) error {
-	return query.Find(i)
+// q.First(&result)
+func (query *Query) First(i interface{}) error {
+	return query.fetchRow(i)
 }
 
 //Count will execute a query and return the resulting rows Select will return
@@ -137,7 +140,6 @@ func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 	case string:
 		query.Where(t, where[1:]...)
 	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64, sql.NullInt64:
-
 		if len(tbl.keys) == 1 {
 			if len(where) == 1 {
 				query.Where(fmt.Sprintf("%s = ?", query.ctx.Dialect().Quote(tbl.keys[0].columnName)), where...)
@@ -253,8 +255,8 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	return tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx)
 }
 
-//fetch a single row into a element
-func (query *Query) fetchAll(i interface{}) error {
+//fetch a all rows into a slice
+func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 
 	ts := reflect.TypeOf(i)
 	if ts.Kind() != reflect.Ptr {
@@ -281,6 +283,13 @@ func (query *Query) fetchAll(i interface{}) error {
 	tbl, ok := query.ctx.table(t)
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", t.String())
+	}
+	
+	//add the last minute where
+	if len(where) >= 1 {
+		if err = query.applyWhere(tbl, where...); err != nil {
+			return err
+		}
 	}
 
 	//generate sql and prepare
@@ -373,7 +382,6 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 				sql.WriteString(" AND ")
 			}
 			sql.WriteString(cond.Statement)
-
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
@@ -401,7 +409,6 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	if query.offset > 0 {
 		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
 	}
-
 	return sql.String(), bindVars
 }
 
@@ -425,8 +432,8 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
+			
 			sql.WriteString(cond.Statement)
-
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
