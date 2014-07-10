@@ -161,7 +161,7 @@ func TestQuery_Find_Slice(t *testing.T) {
 	if len(inputPtr) != 3 {
 		t.Fatalf("Expected to get %d records back but got %d", 3, len(inputPtr))
 	}
-	
+
 	//find by id PTR and where statement inline
 	if err = s.Query().Find(&inputPtr, 1); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
@@ -170,7 +170,6 @@ func TestQuery_Find_Slice(t *testing.T) {
 	if len(inputPtr) != 1 {
 		t.Fatalf("Expected to get %d records back but got %d", 1, len(inputPtr))
 	}
-	
 
 	//check if slice count is reset, and not appended (bug)
 	inputPtr = []*testStructure{&testStructure{}}
@@ -201,7 +200,7 @@ func TestQuery_Find_Slice(t *testing.T) {
 	if len(input) != 3 {
 		t.Fatalf("Expected to get %d records back but got %d", 3, len(input))
 	}
-	
+
 	//check if callback OnInit is called
 	if input[0].onInitInvoked != true || input[1].onInitInvoked != true || input[2].onInitInvoked != true {
 		t.Errorf("OnInit function not invoked")

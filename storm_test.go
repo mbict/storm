@@ -399,10 +399,10 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		Int64:          5678,
 		Float64:        1234.56,
 		Bool:           false,
-		NullString:     sql.NullString{"", false},
-		NullInt:        sql.NullInt64{0, false},
-		NullFloat:      sql.NullFloat64{0, false},
-		NullBool:       sql.NullBool{false, false},
+		NullString:     sql.NullString{String: "", Valid: false},
+		NullInt:        sql.NullInt64{Int64: 0, Valid: false},
+		NullFloat:      sql.NullFloat64{Float64: 0, Valid: false},
+		NullBool:       sql.NullBool{Bool: false, Valid: false},
 	}
 
 	//save item
@@ -443,10 +443,10 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		Int64:          5678,
 		Float64:        1234.56,
 		Bool:           false,
-		NullString:     sql.NullString{"test1234", true},
-		NullInt:        sql.NullInt64{234, true},
-		NullFloat:      sql.NullFloat64{234.12, true},
-		NullBool:       sql.NullBool{true, true},
+		NullString:     sql.NullString{String: "test1234", Valid: true},
+		NullInt:        sql.NullInt64{Int64: 234, Valid: true},
+		NullFloat:      sql.NullFloat64{Float64: 234.12, Valid: true},
+		NullBool:       sql.NullBool{Bool: true, Valid: true},
 	}
 
 	if err = s.Save(input); err != nil {
@@ -475,10 +475,10 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		Int64:          5678,
 		Float64:        1234.56,
 		Bool:           false,
-		NullString:     sql.NullString{"", false},
-		NullInt:        sql.NullInt64{0, false},
-		NullFloat:      sql.NullFloat64{0, false},
-		NullBool:       sql.NullBool{false, false},
+		NullString:     sql.NullString{String: "", Valid: false},
+		NullInt:        sql.NullInt64{Int64: 0, Valid: false},
+		NullFloat:      sql.NullFloat64{Float64: 0, Valid: false},
+		NullBool:       sql.NullBool{Bool: false, Valid: false},
 	}
 
 	//save item
@@ -519,10 +519,10 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		Int64:          5678,
 		Float64:        1234.56,
 		Bool:           false,
-		NullString:     sql.NullString{"test1234", true},
-		NullInt:        sql.NullInt64{234, true},
-		NullFloat:      sql.NullFloat64{234.12, true},
-		NullBool:       sql.NullBool{true, true},
+		NullString:     sql.NullString{String: "test1234", Valid: true},
+		NullInt:        sql.NullInt64{Int64: 234, Valid: true},
+		NullFloat:      sql.NullFloat64{Float64: 234.12, Valid: true},
+		NullBool:       sql.NullBool{Bool: true, Valid: true},
 	}
 
 	if err = s.Save(input); err != nil {
@@ -625,7 +625,7 @@ func TestStorm_DropTable(t *testing.T) {
 	}
 
 	if result != 1 {
-		t.Fatalf("Table does not exist, nothing to drop", err)
+		t.Fatal("Table does not exist, nothing to drop")
 	}
 
 	//drop the table

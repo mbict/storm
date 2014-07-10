@@ -195,7 +195,7 @@ func TestTransaction_Find_Slice(t *testing.T) {
 	if err = tx1.Find(&input, 1); err != nil {
 		t.Fatalf("Failed getting by id with error `%v`", err)
 	}
-	
+
 	if len(input) != 1 {
 		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
 	}
@@ -209,7 +209,7 @@ func TestTransaction_Find_Slice(t *testing.T) {
 	if len(input) != 1 {
 		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
 	}
-	
+
 	//get all (transaction)
 	input = nil
 	if err = tx1.Find(&input); err != nil {
@@ -220,13 +220,12 @@ func TestTransaction_Find_Slice(t *testing.T) {
 		t.Fatalf("Expected to get %d record back but got %d", 3, len(input))
 	}
 
-
 	//find by id (transaction)
 	input = nil
 	if err = s.Find(&input, 2); err != sql.ErrNoRows {
 		t.Fatalf("Expected to get no results back but got error `%v`", err)
 	}
-	
+
 	//get all
 	input = nil
 	if err = s.Find(&input); err != nil {
@@ -236,11 +235,10 @@ func TestTransaction_Find_Slice(t *testing.T) {
 	if len(input) != 1 {
 		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
 	}
-	
+
 	//cleanup
 	tx1.tx.Rollback()
 }
-
 
 func TestTransaction_Delete(t *testing.T) {
 	var (

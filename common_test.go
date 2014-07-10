@@ -80,28 +80,6 @@ type testAllTypeStructure struct {
 	NullBool       sql.NullBool
 }
 
-
-type testTable1 struct {
-	Id int
-	Name string
-	Table2 *testTable2 `db:oneToMany(testTable2, id)`
-	Table2Id int `db:oneToMany(testTable2, id)`
-}
-
-type testTable2 struct {
-	Id int
-	Name string
-	
-	//This will be automaticly populated
-	Tables1 []*testTable1 `db:ManyToMany(testTableRelation)`
-}
-
-type testTableRelation struct {
-	Id int
-	Table1Id int `db:oneToMany(testTable1, id)`
-	Table2Id int `db:oneToMany(testTable2, id)`
-}
-
 func newTestStorm() *Storm {
 	s, err := Open(`sqlite3`, `:memory:`)
 	if err != nil {
@@ -156,7 +134,6 @@ func assertEntity(actual *testStructure, expected *testStructure) error {
 	if actual.Id != expected.Id || actual.Name != expected.Name {
 		return fmt.Errorf("data mismatch expected `%v` but got `%v`", expected, actual)
 	}
-	
 
 	return nil
 }

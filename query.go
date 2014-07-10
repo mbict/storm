@@ -9,14 +9,14 @@ import (
 )
 
 //SortDirection indicates the sort direction used in Order
-type(
+type (
 	SortDirection string
-	
+
 	where struct {
 		Statement string
-		Bindings []interface{}
+		Bindings  []interface{}
 	}
-	
+
 	order struct {
 		Statement string
 		Direction SortDirection
@@ -103,13 +103,13 @@ func (query *Query) Offset(offset int) *Query {
 //you can provide a slice or a single element
 func (query *Query) Find(i interface{}, where ...interface{}) error {
 
-	//slice given	
-	if reflect.Indirect( reflect.ValueOf(i) ).Kind() == reflect.Slice {
+	//slice given
+	if reflect.Indirect(reflect.ValueOf(i)).Kind() == reflect.Slice {
 		if len(where) >= 1 {
 			return query.Query().fetchAll(i, where...)
 		}
 		return query.fetchAll(i)
-	} 
+	}
 
 	//single context
 	if len(where) >= 1 {
@@ -284,7 +284,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", t.String())
 	}
-	
+
 	//add the last minute where
 	if len(where) >= 1 {
 		if err = query.applyWhere(tbl, where...); err != nil {
@@ -432,7 +432,7 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
-			
+
 			sql.WriteString(cond.Statement)
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++

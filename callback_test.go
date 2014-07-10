@@ -106,7 +106,7 @@ func TestCallback_Invoke(t *testing.T) {
 	//with return and arguments
 	err = c.invoke(v, "ErrorCallback", s)
 	if err == nil {
-		t.Errorf("Did expected a error but got none", err)
+		t.Error("Did expected a error but got none")
 	}
 
 	if st.errorCallbackInvoked != true {
