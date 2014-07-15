@@ -78,12 +78,37 @@ func (query *Query) Order(column string, direction SortDirection) *Query {
 
 //Where adds new where conditions to the query
 //Example:
-// q.Where(1) //automatic uses the pk becomes id = 1
 // q.Where("column = 1") //textual condition
 // q.Where("column = ?", 1) //bind params
 // q.Where("(column = ? OR other = ?)",1,2) //multiple bind params
 func (query *Query) Where(condition string, bindAttr ...interface{}) *Query {
-	query.where = append(query.where, where{condition, bindAttr})
+
+	var bindVars []interface{}
+	for _, val := range bindAttr {
+		switch val.(type) {
+		case string, int:
+			bindVars = append(bindVars, val)
+			continue
+		}
+
+		//if known structure we probably know how to extract the pk
+		v := reflect.Indirect(reflect.ValueOf(val))
+		if v.Kind() == reflect.Struct {
+			if tbl, ok := query.ctx.table(v.Type()); ok {
+				if nil != tbl.aiColumn {
+					bindVars = append(bindVars, v.FieldByIndex(tbl.aiColumn.goIndex).Int())
+					continue
+				} else if len(tbl.keys) >= 1 {
+					bindVars = append(bindVars, v.FieldByIndex(tbl.keys[0].goIndex).Int())
+					continue
+				}
+			}
+		}
+
+		bindVars = append(bindVars, val)
+	}
+
+	query.where = append(query.where, where{Statement: condition, Bindings: bindVars})
 	return query
 }
 
@@ -150,6 +175,19 @@ func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 			return errors.New("not implemented having multiple pks for find")
 		}
 	default:
+		v := reflect.Indirect(reflect.ValueOf(t))
+		if v.Kind() == reflect.Struct {
+			if tbl, ok := query.ctx.table(v.Type()); ok {
+				condition := fmt.Sprintf("%s = ?", query.ctx.Dialect().Quote(tbl.tableName+"_id"))
+				if nil != tbl.aiColumn {
+					query.Where(condition, v.FieldByIndex(tbl.aiColumn.goIndex).Int())
+					return nil
+				} else if len(tbl.keys) >= 1 {
+					query.Where(condition, v.FieldByIndex(tbl.keys[0].goIndex).Int())
+					return nil
+				}
+			}
+		}
 		return errors.New("unsupported pk find type")
 	}
 
@@ -381,6 +419,7 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 			if pos > 0 {
 				sql.WriteString(" AND ")
 			}
+			/* @todo need to implement error handling */
 			sql.WriteString(cond.Statement)
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++

@@ -12,7 +12,15 @@ type testStructureWithTags struct {
 	Name             string            `json:"name"`
 	SnakeId          overrideTestToInt `db:"type(int)"`
 	Hidden           string            `db:"ignore" json:"-"`
+	Tags             []TestProductTags
+	TagsPtr          []*TestProductTags
 	localNotExported int
+}
+
+type TestProductTags struct {
+	Id            int
+	TestProductId int
+	Tags          string
 }
 
 type testProductDescription struct {
@@ -60,11 +68,15 @@ func TestTable_ParseTags(t *testing.T) {
 
 func TestTable_ExtractStructColumns_Tags(t *testing.T) {
 
-	columns := extractStructColumns(reflect.ValueOf(testStructureWithTags{}), nil)
+	columns, relations := extractStructColumns(reflect.ValueOf(testStructureWithTags{}), nil)
 
 	//check the column count, ignoring 1 column
 	if len(columns) != 3 {
 		t.Fatalf("Expected to have 3 columns in the structure, got %d columns", len(columns))
+	}
+
+	if len(relations) != 2 {
+		t.Fatalf("Expected to have 2 rel;ationColumns in the structure, got %d relatiopn columns", len(relations))
 	}
 
 	//column name should be read from the tag name(xId)
@@ -100,7 +112,7 @@ func TestTable_ExtractStructColumns_Tags(t *testing.T) {
 
 func TestTable_ExtractStructColumns_EmbeddedStruct(t *testing.T) {
 
-	columns := extractStructColumns(reflect.ValueOf(testProduct{}), nil)
+	columns, _ := extractStructColumns(reflect.ValueOf(testProduct{}), nil)
 
 	//check the column count
 	if len(columns) != 3 {

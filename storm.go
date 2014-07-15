@@ -13,7 +13,7 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
-var ErrNoRows = sql.ErrNoRows
+var RecordNotFound = sql.ErrNoRows
 
 //Context interface for Transaction and Query
 type Context interface {
@@ -205,7 +205,7 @@ func (storm *Storm) DropTable(i interface{}) error {
 }
 
 //RegisterStructure will parse the provided structure and links it to a table in the datastore
-func (storm *Storm) RegisterStructure(i interface{}, name string) error {
+func (storm *Storm) RegisterStructure(i interface{}) error {
 
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
@@ -218,12 +218,39 @@ func (storm *Storm) RegisterStructure(i interface{}, name string) error {
 
 	storm.tableLock.Lock()
 	defer storm.tableLock.Unlock()
-
 	if _, exists := storm.tables[t]; exists == true {
+
 		return fmt.Errorf("duplicate structure, '%s' already exists", t)
 	}
 
-	storm.tables[t] = newTable(reflect.New(t), name)
+	storm.tables[t] = newTable(reflect.New(t))
+	storm.resolveRelations()
+
+	return nil
+}
+
+//
+func (storm *Storm) resolveRelations() error {
+	for _, tbl := range storm.tables {
+		for _, rel := range tbl.relations {
+
+			//skip already foudn relations
+			if rel.relTable != nil || rel.relColumn != nil {
+				continue
+			}
+
+			if relTbl, ok := storm.tables[rel.goSingularType]; ok == true {
+				for _, relCol := range relTbl.columns {
+					if relCol.columnName == tbl.tableName+"_id" {
+						//found a relation (slice type)
+						rel.relTable = relTbl
+						rel.relColumn = relCol
+						break
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 

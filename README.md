@@ -16,10 +16,17 @@ Usage
 **Create a storm instance and add a structure**
 ```GO
 //example structure
+type Address struct {
+	Id int
+	CustomerId int
+	AddressLine string
+}
+
 type Customer struct {
 	Id               int    `db:"name(id),pk"
 	Firstname	     string 
 	Lastname	     string
+	Adresses		 []Adress
 	Hidden           string `db:"ignore"
 }
 
@@ -43,12 +50,14 @@ db.Ping()
 ````
 
 **Add table/structures**
+Storm requires that you register the used model before you can query them. This is because of the cache model for reflection and to resolve the relations between the model.
+When you register a new structure all the structures will be checked if they are related by any ids
 ```GO
 //object instance
-db.AddStructure(Customer{}, "customer")
+db.AddStructure(Customer{})
 
 //or with a null pointer instance
-db.AddStructure((*Customer)(nil), "customer")
+db.AddStructure((*Address)(nil))
 ```
 
 **Entity callbacks/events**
@@ -102,7 +111,11 @@ err := db.Save(&newCustomer)
 **Get one entity by its primary key**
 ```GO
 var customer Customer
-obj, err := db.Find(&customer, 1)
+err := db.Find(&customer, 1)
+
+//or
+
+err := db.Where("id = ?", 1).First(&customer)
 ```
 
 **Update a entity**
@@ -120,14 +133,39 @@ err := db.Delete(&customer)
 ```GO
 q := db.Query()
 var customers []Customer
-err := q.Where("name LIKE ?", "%test%").Select(&customers)
+err := q.Where("name LIKE ?", "%test%").Find(&customers)
+
+//or with inline condition
+var customers []Customer
+err := db.Find(&customers, "name LIKE ?", "%test%")
+
+//or with inline id
+err := db.Find(&customers, 1)
+
+//or with inline relation
+var customer Customer{Id: 1}
+var addresses []Address
+err := db.Find(&addresses, customer)
+
 ```
 
-**Get one entity method **
+**Get one/first entity method **
 ```GO
 q := db.Query()
 var customer Customer
-err := q.Where("name LIKE ?", "%test%").SelectRow(&customer)
+err := q.Where("name LIKE ?", "%test%").First(&customer)
+
+//or find inline condition
+var customer Customer
+err := db.Find(&customer, "name LIKE ?", "%test%")
+
+//or find inline id
+err := db.Find(&customer, 1)
+
+//or find with related record
+var customer Customer{Id: 1}
+var address Address
+err := db.Find(&address, customer)
 ```
 
 **Get the count**
@@ -154,5 +192,12 @@ db.CreateTable((*Customer)(nil))
 ```GO
 db.DropTable((*Customer)(nil))
 ```
+
+
+
+**TODO**
+- Create a function to fetch all the related fields(slices)
+- Depends() function who wil take a entity as input and fillin all the related structures.
+- Give some work to the 1 on 1 relations/structures (now only one on many are supported)
 
 Thats it for now, Enjoy

@@ -76,8 +76,8 @@ func TestTransaction_Save(t *testing.T) {
 	)
 
 	//update a existing entity
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, '2nd')")
+	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, '2nd')")
 
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
@@ -88,7 +88,7 @@ func TestTransaction_Save(t *testing.T) {
 		t.Fatalf("Failed save (update) with error `%v`", err.Error())
 	}
 
-	res = tx1.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -98,7 +98,7 @@ func TestTransaction_Save(t *testing.T) {
 	}
 
 	//check if not modified in other connection (non transactional)
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -122,7 +122,7 @@ func TestTransaction_Save(t *testing.T) {
 	}
 
 	//query for entity
-	res = tx1.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 3)
+	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -131,13 +131,13 @@ func TestTransaction_Save(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 
-	res = s.Begin().DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 3)
+	res = s.Begin().DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
 	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		t.Fatalf("Expected to get no rows back but got %v", err)
 	}
 
 	//check if not modified in other connection (non transactional)
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 3)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
 	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		t.Fatalf("Expected to get no rows back but got error %v or a record back", err)
 	}
@@ -153,9 +153,9 @@ func TestTransaction_Find_Single(t *testing.T) {
 		s     = newTestStormFile()
 		tx1   = s.Begin()
 	)
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
-	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (3, 'name 3nd')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
+	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3nd')")
 
 	//find by id (transaction)
 	input = nil
@@ -186,9 +186,9 @@ func TestTransaction_Find_Slice(t *testing.T) {
 		s     = newTestStormFile()
 		tx1   = s.Begin()
 	)
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
-	tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (3, 'name 3nd')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
+	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3nd')")
 
 	//find by id (transaction)
 	input = nil
@@ -248,15 +248,15 @@ func TestTransaction_Delete(t *testing.T) {
 		tx1   = s.Begin()
 		res   *sql.Row
 	)
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name delete')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name delete')")
 
 	//normal
 	if err = tx1.Delete(input); err != nil {
 		t.Fatalf("Failed delete with error `%v`", err.Error())
 	}
 
-	res = tx1.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 2)
+	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 2)
 	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		if err == nil {
 			t.Fatalf("Record not deleted")
@@ -264,7 +264,7 @@ func TestTransaction_Delete(t *testing.T) {
 		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
 	}
 
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 2)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 2)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row but got error %v", err)
 	}
@@ -281,7 +281,7 @@ func TestTransaction_Commit(t *testing.T) {
 	)
 
 	//update a existing entity
-	_, err = tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
@@ -291,7 +291,7 @@ func TestTransaction_Commit(t *testing.T) {
 		t.Fatalf("Error while commit got error `%v`", err)
 	}
 
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -312,7 +312,7 @@ func TestTransaction_Rollback(t *testing.T) {
 	)
 
 	//update a existing entity
-	_, err = tx1.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
@@ -322,7 +322,7 @@ func TestTransaction_Rollback(t *testing.T) {
 		t.Fatalf("Error while commit got error `%v`", err)
 	}
 
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		t.Fatalf("Expected to get a error back no rows found but got something else %v", err)
 	}

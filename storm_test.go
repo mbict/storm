@@ -22,7 +22,7 @@ func TestStorm_RegisterStructure(t *testing.T) {
 
 	//register by casted nil type
 	s, _ = Open(`sqlite3`, `:memory:`)
-	err = s.RegisterStructure((*testAllTypeStructure)(nil), `testAllTypeStructure`)
+	err = s.RegisterStructure((*testAllTypeStructure)(nil))
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
 	}
@@ -34,7 +34,7 @@ func TestStorm_RegisterStructure(t *testing.T) {
 	//register by element
 	s, _ = Open(`sqlite3`, `:memory:`)
 	structure := testAllTypeStructure{}
-	err = s.RegisterStructure(structure, `testStructure`)
+	err = s.RegisterStructure(structure)
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
 	}
@@ -46,7 +46,7 @@ func TestStorm_RegisterStructure(t *testing.T) {
 	//register by nil element
 	s, _ = Open(`sqlite3`, `:memory:`)
 	structurePtr := &testAllTypeStructure{}
-	err = s.RegisterStructure(structurePtr, `testStructure`)
+	err = s.RegisterStructure(structurePtr)
 	if err != nil {
 		t.Fatalf("Failed with error : %v", err)
 	}
@@ -67,27 +67,59 @@ func TestStorm_RegisterStructureWrongInput(t *testing.T) {
 	s, _ = Open(`sqlite3`, `:memory:`)
 
 	//register by casted nil type
-	err = s.RegisterStructure((*int)(nil), `testStructure`)
+	err = s.RegisterStructure((*int)(nil))
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 
 	//register by normal non struct type
-	err = s.RegisterStructure((string)("test"), `testStructure`)
+	err = s.RegisterStructure((string)("test"))
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 
 	//duplicate add error
-	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
+	err = s.RegisterStructure((*testProduct)(nil))
 	if err != nil {
 		t.Fatalf("Expected no error , but got `%v`", err)
 	}
 
 	expectedError = "duplicate structure, 'storm.testProduct' already exists"
-	err = s.RegisterStructure((*testProduct)(nil), `testStructure`)
+	err = s.RegisterStructure((*testProduct)(nil))
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
+func TestStorm_RegisterStructureResolveRelations_OneToMany(t *testing.T) {
+
+	var (
+		s          *Storm
+		typeStruct = reflect.TypeOf(testStructure{})
+	)
+
+	s, _ = Open(`sqlite3`, `:memory:`)
+	if nil != s.RegisterStructure((*testStructure)(nil)) ||
+		nil != s.RegisterStructure((*testRelatedStructure)(nil)) {
+		t.Fatalf("Failed adding test structures")
+	}
+
+	tbl, _ := s.tables[typeStruct]
+	if len(tbl.relations) != 1 {
+		t.Fatalf("Expected to get 1 relational field but got `%d`", len(tbl.relations))
+	}
+
+	rel := tbl.relations[0]
+	if nil == rel.relColumn || nil == rel.relTable {
+		t.Fatalf("Relational table information missing, no relation found")
+	}
+
+	if rel.relTable.tableName != "test_related_structure" {
+		t.Fatalf("Wrong table found expected %s but got %s", "test_related_structure", rel.relTable.tableName)
+	}
+
+	if rel.relColumn.columnName != "test_structure_id" {
+		t.Fatalf("Wrong column name found expected %s but got %s", "test_structure_id", rel.relColumn.columnName)
 	}
 
 }
@@ -98,8 +130,8 @@ func TestStorm_Find_Single(t *testing.T) {
 		input *testStructure
 		s     = newTestStorm()
 	)
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, 'name 2nd')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
 
 	//empty result, no match
 	if err = s.Find(&input, 999); err != sql.ErrNoRows {
@@ -212,7 +244,7 @@ func TestStorm_Delete(t *testing.T) {
 		res   *sql.Row
 	)
 
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
@@ -231,7 +263,7 @@ func TestStorm_Delete(t *testing.T) {
 		t.Errorf("OnDeleted callback not invoked")
 	}
 
-	res = s.DB().QueryRow("SELECT * FROM `testStructure` WHERE `id` = ?", 1)
+	res = s.DB().QueryRow("SELECT * FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
 		if err == nil {
 			t.Fatalf("Record not deleted")
@@ -298,8 +330,8 @@ func TestStorm_Save(t *testing.T) {
 	)
 
 	//update a existing entity
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (1, 'name')")
-	_, err = s.DB().Exec("INSERT INTO `testStructure` (`id`, `name`) VALUES (2, '2nd')")
+	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
+	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, '2nd')")
 	if err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
@@ -309,7 +341,7 @@ func TestStorm_Save(t *testing.T) {
 		t.Fatalf("Failed save (update) with error `%v`", err.Error())
 	}
 
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 1)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -343,7 +375,7 @@ func TestStorm_Save(t *testing.T) {
 	}
 
 	//query for entity
-	res = s.DB().QueryRow("SELECT id, name FROM `testStructure` WHERE `id` = ?", 3)
+	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
 	if err = res.Scan(&input.Id, &input.Name); err != nil {
 		t.Fatalf("Expected to get a row back but got error %v", err)
 	}
@@ -379,12 +411,12 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 	}
 
 	//update a existing entity
-	if _, err = s.DB().Exec("INSERT INTO `testAllTypeStructure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
+	if _, err = s.DB().Exec("INSERT INTO `test_all_type_structure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
 		"(1, 5, '2010-12-31 23:59:59 +0000 UTC', '1234567890ABCDEFG', 'stringvalue', 99, 999, 99.1234, 'TRUE', 'null_String_value', 99, 99.1234, 'TRUE')"); err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
 
-	if _, err = s.DB().Exec("INSERT INTO `testAllTypeStructure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
+	if _, err = s.DB().Exec("INSERT INTO `test_all_type_structure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
 		"(2, 6, NULL, 'GFEDCBA0987654321', '2nd string value', 199, 1999, 199.1234, 'FALSE', NULL, NULL, NULL, NULL)"); err != nil {
 		t.Fatalf("Failure on saving testdate to store `%v`", err)
 	}
@@ -590,7 +622,7 @@ func TestStorm_CreateTable(t *testing.T) {
 	)
 
 	s, _ := Open(`sqlite3`, `:memory:`)
-	s.RegisterStructure((*testStructure)(nil), `testStructure`)
+	s.RegisterStructure((*testStructure)(nil))
 
 	if result != 0 {
 		t.Fatalf("Table does exists, cannot create")
@@ -601,7 +633,7 @@ func TestStorm_CreateTable(t *testing.T) {
 		t.Fatalf("Failure creating new table `%v`", err)
 	}
 
-	result, err = assertTableExist("testStructure", s.DB())
+	result, err = assertTableExist("test_structure", s.DB())
 	if err != nil {
 		t.Fatalf("Error while determing if new table exists `%v`", err)
 	}
@@ -619,7 +651,7 @@ func TestStorm_DropTable(t *testing.T) {
 	)
 
 	//check if table does exists
-	result, err = assertTableExist("testStructure", s.DB())
+	result, err = assertTableExist("test_structure", s.DB())
 	if err != nil {
 		t.Fatalf("Error while determing if table exists `%v`", err)
 	}
@@ -635,7 +667,7 @@ func TestStorm_DropTable(t *testing.T) {
 	}
 
 	//check if table does not exists
-	result, err = assertTableExist("testStructure", s.DB())
+	result, err = assertTableExist("test_structure", s.DB())
 	if err != nil {
 		t.Fatalf("Error while determing if table is dropped `%v`", err)
 	}
@@ -732,7 +764,7 @@ func TestStorm_generateDeleteSql(t *testing.T) {
 		t.Errorf("Expected to get 1 bind value with the value 1 but got value %v", bind[0])
 	}
 
-	sqlExpected := "DELETE FROM `testStructure` WHERE `id` = ?"
+	sqlExpected := "DELETE FROM `test_structure` WHERE `id` = ?"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
@@ -754,7 +786,7 @@ func TestStorm_generateInsertSQL(t *testing.T) {
 		t.Errorf("Expected to get 1 bind value with the value `test` but got value %v", bind[0])
 	}
 
-	sqlExpected := "INSERT INTO `testStructure` (`name`) VALUES (?)"
+	sqlExpected := "INSERT INTO `test_structure` (`name`) VALUES (?)"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
@@ -780,7 +812,7 @@ func TestStorm_generateUpdateSQL(t *testing.T) {
 		t.Errorf("Expected to get 2nd bind value with the value `2` but got value %v", bind[1])
 	}
 
-	sqlExpected := "UPDATE `testStructure` SET `name` = ? WHERE `id` = ?"
+	sqlExpected := "UPDATE `test_structure` SET `name` = ? WHERE `id` = ?"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}
@@ -791,7 +823,7 @@ func TestStorm_generateCreateTableSQL(t *testing.T) {
 	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
 
 	sqlQuery := s.generateCreateTableSQL(tbl)
-	sqlExpected := "CREATE TABLE `testAllTypeStructure` " +
+	sqlExpected := "CREATE TABLE `test_all_type_structure` " +
 		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
 		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT," +
 		"`null_float` REAL,`null_bool` BOOL)"
@@ -805,7 +837,7 @@ func TestStorm_generateDropTableSQL(t *testing.T) {
 	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
 
 	sqlQuery := s.generateDropTableSQL(tbl)
-	sqlExpected := "DROP TABLE `testAllTypeStructure`"
+	sqlExpected := "DROP TABLE `test_all_type_structure`"
 	if sqlQuery != sqlExpected {
 		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
 	}

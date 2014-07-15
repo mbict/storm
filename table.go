@@ -10,23 +10,35 @@ import (
 type column struct {
 	columnName string
 	settings   map[string]string
-	goType     reflect.Type
-	goIndex    []int
+	//relTable   *table
+	//relColumn  *column
+	goType  reflect.Type
+	goIndex []int
+}
+
+type relation struct {
+	name           string
+	relTable       *table
+	relColumn      *column
+	goType         reflect.Type
+	goSingularType reflect.Type
+	goIndex        []int
 }
 
 type table struct {
 	tableName string
 	goType    reflect.Type
 	columns   []*column
+	relations []*relation
 	keys      []*column
 	aiColumn  *column
 	callbacks callback
 }
 
-func newTable(v reflect.Value, name string) *table {
+func newTable(v reflect.Value) *table {
 
 	//read the structure
-	cols := extractStructColumns(reflect.Indirect(v), nil)
+	cols, rels := extractStructColumns(reflect.Indirect(v), nil)
 	pks := findPKs(cols)
 
 	//scan for callbacks
@@ -39,11 +51,14 @@ func newTable(v reflect.Value, name string) *table {
 	cb.registerCallback(v, "OnPostDelete")
 	cb.registerCallback(v, "OnInit")
 
+	t := reflect.Indirect(v).Type()
+
 	//create the table structure
 	return &table{
-		tableName: name,
-		goType:    reflect.Indirect(v).Type(),
+		tableName: camelToSnake(t.Name()),
+		goType:    t,
 		columns:   cols,
+		relations: rels,
 		keys:      pks,
 		aiColumn:  findAI(cols, pks),
 		callbacks: cb,
@@ -69,7 +84,7 @@ func parseTags(s string) map[string]string {
 }
 
 // read out the structure and return the column map
-func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
+func extractStructColumns(v reflect.Value, index []int) (cols []*column, rels []*relation) {
 
 	t := v.Type()
 	n := t.NumField()
@@ -78,8 +93,9 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 
 		if f.Anonymous && f.Type.Kind() == reflect.Struct {
 			//if the embeded element is a structure ignore it for now
-			subcols := extractStructColumns(v.Field(i), append(index, f.Index...))
+			subcols, subrels := extractStructColumns(v.Field(i), append(index, f.Index...))
 			cols = append(cols, subcols...)
+			rels = append(rels, subrels...)
 			continue
 		} else {
 			tags := parseTags(f.Tag.Get("db"))
@@ -93,9 +109,27 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 			if columnName == "" {
 				columnName = camelToSnake(f.Name)
 			}
+			t := f.Type
+
+			//ignore all slices who are not bytes, there will be resolved by solve relations
+			if f.Type.Kind() == reflect.Slice && f.Type != reflect.TypeOf([]byte{}) {
+
+				//get the singular type for table lookup
+				bt := t.Elem()
+				if bt.Kind() == reflect.Ptr {
+					bt = bt.Elem()
+				}
+
+				rels = append(rels, &relation{
+					name:           columnName,
+					goType:         t,
+					goSingularType: bt,
+					goIndex:        append(index, f.Index...),
+				})
+				continue
+			}
 
 			//ignore tag, or when not exported we ignore it
-			t := f.Type
 			if overideType, ok := tags["type"]; ok {
 				switch overideType {
 				case "int":
@@ -111,17 +145,16 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column) {
 				}
 			}
 
-			col := &column{
+			cols = append(cols, &column{
 				columnName: columnName,
 				settings:   tags,
 				goType:     t,
 				goIndex:    append(index, f.Index...),
-			}
-			cols = append(cols, col)
+			})
 		}
 	}
 
-	return cols
+	return
 }
 
 //find primary keys
