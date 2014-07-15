@@ -54,10 +54,10 @@ Storm requires that you register the used model before you can query them. This 
 When you register a new structure all the structures will be checked if they are related by any ids
 ```GO
 //object instance
-db.AddStructure(Customer{})
+db.RegisterStructure(Customer{})
 
 //or with a null pointer instance
-db.AddStructure((*Address)(nil))
+db.RegisterStructure((*Address)(nil))
 ```
 
 **Entity callbacks/events**
