@@ -219,17 +219,17 @@ func (query *Query) Dependent(i interface{}, columns ...string) error {
 							break
 						}
 					}
-					
+
 					if val, ok := val.(int64); ok {
 						if val == 0 {
 							//empty int
 							if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
 								elm.Set(reflect.Zero(elm.Type()))
 							}
-							break			
+							break
 						}
 					}
-					
+
 					err := query.ctx.Find(dst, "id = ?", val)
 
 					//if there are no results we reset the column if its a pointer to nil

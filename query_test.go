@@ -132,7 +132,7 @@ func TestQuery_Find_Single(t *testing.T) {
 	if inputPtr.onInitInvoked != true {
 		t.Errorf("OnInit function not invoked")
 	}
-	
+
 	//make sure when we recycle a pointer its reset to a zero value
 }
 
@@ -287,7 +287,7 @@ func TestQuery_Find_Slice(t *testing.T) {
 	if len(input) != 3 {
 		t.Fatalf("Expected to have %d records inslice but got %d items is slice", 3, len(input))
 	}
-	
+
 	//BUG: make sure if we recycle a pointer its initialized to zero
 	if err = s.Find(&input, `id = ?`, 999); err != sql.ErrNoRows {
 		t.Fatalf("Failed getting by id with error `%v`", err)

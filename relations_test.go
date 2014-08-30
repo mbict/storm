@@ -10,7 +10,7 @@ import (
 
 /*** suite setup ***/
 type relationSuite struct {
-	db *Storm
+	db   *Storm
 	dbTx *Transaction
 }
 
@@ -27,7 +27,7 @@ func (s *relationSuite) SetUpSuite(c *C) {
 	s.db.RegisterStructure((*TestTag)(nil))
 	s.db.SetMaxIdleConns(2)
 	s.db.SetMaxOpenConns(2)
-	
+
 	//begin transaction
 	s.dbTx = s.db.Begin()
 
@@ -52,7 +52,7 @@ func (s *relationSuite) SetUpSuite(c *C) {
 	s.dbTx.DB().Exec("INSERT INTO `test_product_tag_test_tag` (`test_product_id`, `test_tag_id`) VALUES (1, 2)")
 	s.dbTx.DB().Exec("INSERT INTO `test_product_tag_test_tag` (`test_product_id`, `test_tag_id`) VALUES (2, 3)")
 
-	s.db.Log(log.New(os.Stdout, "[storm-relation] ", 0))
+	//s.db.Log(log.New(os.Stdout, "[storm-relation] ", 0))
 }
 
 /*** tests ***/

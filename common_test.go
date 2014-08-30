@@ -8,8 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"strconv"
-	"time"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	. "gopkg.in/check.v1"
