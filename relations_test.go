@@ -1,8 +1,6 @@
 package storm
 
 import (
-	"log"
-	"os"
 	"reflect"
 
 	. "gopkg.in/check.v1"
