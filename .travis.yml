@@ -8,5 +8,6 @@ go:
 
 before_install:
  - go get github.com/mattn/go-sqlite3
+ - go get gopkg.in/check.v1
 script:
  - go test -v ./...
