@@ -2,18 +2,19 @@ package storm
 
 import (
 	"bytes"
+	"database/sql"
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type column struct {
 	columnName string
 	settings   map[string]string
-	//relTable   *table
-	//relColumn  *column
-	goType  reflect.Type
-	goIndex []int
+	goType     reflect.Type
+	goIndex    []int
+	isScanner  bool
 }
 
 type relation struct {
@@ -111,7 +112,8 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column, rels []
 			}
 			t := f.Type
 
-			//ignore all slices who are not bytes, there will be resolved by solve relations
+			//slices are threat like relational one to many (expect byte slices)
+			isScannerCol := isScanner(f.Type)
 			if f.Type.Kind() == reflect.Slice && f.Type != reflect.TypeOf([]byte{}) {
 
 				//get the singular type for table lookup
@@ -124,6 +126,17 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column, rels []
 					name:           columnName,
 					goType:         t,
 					goSingularType: bt,
+					goIndex:        append(index, f.Index...),
+				})
+				continue
+
+				//all structs are handled as relations / except when they implements the scanner interface
+			} else if !isScannerCol && !isTime(f.Type) && (f.Type.Kind() == reflect.Struct || (f.Type.Kind() == reflect.Ptr && f.Type.Elem().Kind() == reflect.Struct)) {
+
+				rels = append(rels, &relation{
+					name:           columnName,
+					goType:         t,
+					goSingularType: t,
 					goIndex:        append(index, f.Index...),
 				})
 				continue
@@ -150,6 +163,7 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column, rels []
 				settings:   tags,
 				goType:     t,
 				goIndex:    append(index, f.Index...),
+				isScanner:  isScannerCol,
 			})
 		}
 	}
@@ -222,4 +236,15 @@ func snakeToCamel(s string) string {
 	}
 
 	return buf.String()
+}
+
+func isScanner(t reflect.Type) bool {
+	_, isScanner := reflect.New(t).Interface().(sql.Scanner)
+	return isScanner
+}
+
+var timeType = reflect.TypeOf(time.Time{})
+
+func isTime(t reflect.Type) bool {
+	return t == timeType || t.AssignableTo(timeType)
 }

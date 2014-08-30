@@ -73,6 +73,12 @@ func (transaction *Transaction) Find(i interface{}, where ...interface{}) error 
 	return transaction.Query().Find(i, where...)
 }
 
+//Dependent will try to fetch all the related enities and populate the dependent fields (slice and single values)
+//You can provide a list with column names if you only want those fields to be populated
+func (transaction *Transaction) Dependent(i interface{}, columns ...string) error {
+	return transaction.Query().Dependent(i, columns...)
+}
+
 //Delete will delete the provided structure from the datastore
 func (transaction *Transaction) Delete(i interface{}) error {
 	return transaction.storm.deleteEntity(i, transaction)

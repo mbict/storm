@@ -9,9 +9,14 @@ import (
 	"log"
 	"strconv"
 	"time"
+	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+	. "gopkg.in/check.v1"
 )
+
+//hook up the testing framework to test
+func Test(t *testing.T) { TestingT(t) }
 
 type testCustomType int64
 

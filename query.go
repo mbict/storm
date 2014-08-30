@@ -3,9 +3,11 @@ package storm
 import (
 	"bytes"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 //SortDirection indicates the sort direction used in Order
@@ -37,6 +39,9 @@ type Query struct {
 	order  []order
 	offset int
 	limit  int
+
+	dependentFetch   bool
+	dependentColumns []string
 }
 
 func newQuery(ctx Context, parent *Query) *Query {
@@ -124,6 +129,14 @@ func (query *Query) Offset(offset int) *Query {
 	return query
 }
 
+//DependentColumns will set the dependent fetch mode for Find and First.
+//When set all or only the provided columns who are dependent will be populated when fetched
+func (query *Query) DependentColumns(columns ...string) *Query {
+	query.dependentFetch = true
+	query.dependentColumns = append(query.dependentColumns, columns...)
+	return query
+}
+
 //Find will try to retreive the matching structure/entity based on your where statement
 //you can provide a slice or a single element
 func (query *Query) Find(i interface{}, where ...interface{}) error {
@@ -158,9 +171,91 @@ func (query *Query) Count(i interface{}) (int64, error) {
 	return query.fetchCount(i)
 }
 
+//Dependent will try to fetch all the related enities and populate the dependent fields (slice and single values)
+//You can provide a list with column names if you only want those fields to be populated
+func (query *Query) Dependent(i interface{}, columns ...string) error {
+
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("provided input is not a pointer type")
+	}
+
+	v = v.Elem()
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return errors.New("Cannot get dependent fields on nil struct")
+		}
+	}
+	v = reflect.Indirect(v)
+
+	if v.Kind() != reflect.Struct || !v.CanSet() {
+		return errors.New("provided input is not a structure type")
+	}
+
+	//find the table
+	tbl, ok := query.ctx.table(v.Type())
+	if !ok {
+		return fmt.Errorf("no registered structure for `%s` found", v.Type().String())
+	}
+
+	for _, col := range columns {
+		col = camelToSnake(col)
+		for _, rel := range tbl.relations {
+			if strings.EqualFold(rel.name, col) {
+				elm := v.FieldByIndex(rel.goIndex)
+				dst := elm.Addr().Interface()
+				if rel.relColumn != nil && rel.relTable == nil {
+
+					val := v.FieldByIndex(rel.relColumn.goIndex).Interface()
+
+					//check if val is not empty or 0 to avoid lookups who will result in no rows
+					if valuer, ok := val.(driver.Valuer); ok {
+						val, _ = valuer.Value()
+						if val == nil {
+							//empty valuer
+							if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+								elm.Set(reflect.Zero(elm.Type()))
+							}
+							break
+						}
+					}
+					
+					if val, ok := val.(int64); ok {
+						if val == 0 {
+							//empty int
+							if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+								elm.Set(reflect.Zero(elm.Type()))
+							}
+							break			
+						}
+					}
+					
+					err := query.ctx.Find(dst, "id = ?", val)
+
+					//if there are no results we reset the column if its a pointer to nil
+					if err == sql.ErrNoRows {
+						if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+							elm.Set(reflect.Zero(elm.Type()))
+						}
+					} else if err != nil {
+						return err
+					}
+				} else if rel.relColumn != nil && rel.relTable != nil {
+					val := v.FieldByIndex(tbl.aiColumn.goIndex).Interface()
+					err := query.ctx.Find(dst, tbl.tableName+"_id = ?", val)
+					if err != nil && err != sql.ErrNoRows {
+						return err
+					}
+				}
+				break
+			}
+		}
+	}
+	return nil
+}
+
 //create additional where stements from arguments
 func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
-
 	switch t := where[0].(type) {
 	case string:
 		query.Where(t, where[1:]...)
@@ -239,11 +334,10 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		return errors.New("provided input is not a pointer type")
 	}
 
+	//reset element to zero variant
 	v = v.Elem()
 	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
-		}
+		v.Set(reflect.New(v.Type().Elem()))
 	}
 	v = reflect.Indirect(v)
 
@@ -288,6 +382,10 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	err = row.Scan(dest...)
 	if err != nil {
 		return err
+	}
+
+	if query.dependentFetch == true {
+		query.Dependent(v.Addr().Interface(), query.dependentColumns...)
 	}
 
 	return tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx)
@@ -377,6 +475,13 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 
 		if err = tbl.callbacks.invoke(v, "OnInit", query.ctx); err != nil {
 			return err
+		}
+
+		if query.dependentFetch == true {
+			err = query.Dependent(v.Interface(), query.dependentColumns...)
+			if err != nil {
+				return err
+			}
 		}
 
 		if sliceTypeIsPtr == true {

@@ -3,12 +3,42 @@ package storm
 import (
 	"bytes"
 	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
+	. "gopkg.in/check.v1"
 	"reflect"
 	"testing"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
+
+//*** test suite setup ***/
+type stormSuite struct {
+	db *Storm
+}
+
+var _ = Suite(&stormSuite{})
+
+func (s *stormSuite) SetUpSuite(c *C) {
+
+	var err error
+	s.db, err = Open(`sqlite3`, `:memory:`)
+	c.Assert(s.db, NotNil)
+	c.Assert(err, IsNil)
+
+	s.db.RegisterStructure((*testStructure)(nil))
+	s.db.RegisterStructure((*testAllTypeStructure)(nil))
+	s.db.SetMaxIdleConns(10)
+	s.db.SetMaxOpenConns(10)
+
+	s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	s.db.DB().Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
+	s.db.DB().Exec("CREATE TABLE `test_all_type_structure` " +
+		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
+		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
+}
+
+/*** tests ***/
+func (s *stormSuite) TestRegisterStructure(c *C) {
+}
 
 func TestStorm_RegisterStructure(t *testing.T) {
 
@@ -56,39 +86,11 @@ func TestStorm_RegisterStructure(t *testing.T) {
 	}
 }
 
-func TestStorm_RegisterStructureWrongInput(t *testing.T) {
-
-	var (
-		s             *Storm
-		err           error
-		expectedError = `provided input is not a structure type`
-	)
-
-	s, _ = Open(`sqlite3`, `:memory:`)
-
-	//register by casted nil type
-	err = s.RegisterStructure((*int)(nil))
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-
-	//register by normal non struct type
-	err = s.RegisterStructure((string)("test"))
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-
-	//duplicate add error
-	err = s.RegisterStructure((*testProduct)(nil))
-	if err != nil {
-		t.Fatalf("Expected no error , but got `%v`", err)
-	}
-
-	expectedError = "duplicate structure, 'storm.testProduct' already exists"
-	err = s.RegisterStructure((*testProduct)(nil))
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
+func (s *stormSuite) TestRegisterStructureWrongInput(c *C) {
+	c.Assert(s.db.RegisterStructure((*int)(nil)), ErrorMatches, `provided input is not a structure type`)
+	c.Assert(s.db.RegisterStructure(string("test")), ErrorMatches, `provided input is not a structure type`)
+	c.Assert(s.db.RegisterStructure((*TestProduct)(nil)), IsNil)
+	c.Assert(s.db.RegisterStructure((*TestProduct)(nil)), ErrorMatches, `duplicate structure, 'storm.TestProduct' already exists`)
 }
 
 func TestStorm_RegisterStructureResolveRelations_OneToMany(t *testing.T) {
@@ -191,6 +193,15 @@ func TestStorm_Find_Single(t *testing.T) {
 	//check if callback OnInit is called
 	if input.onInitInvoked != true {
 		t.Errorf("OnInit function not invoked")
+	}
+
+	//BUG: make sure if we recycle a pointer its initialized to zero
+	if err = s.Find(&input, `id = ?`, 999); err != sql.ErrNoRows {
+		t.Fatalf("Failed getting by id with error `%v`", err)
+	}
+
+	if err = assertEntity(input, &testStructure{Id: 0, Name: ""}); err != nil {
+		t.Fatalf("Error: %v", err)
 	}
 }
 
@@ -677,168 +688,82 @@ func TestStorm_DropTable(t *testing.T) {
 	}
 }
 
-//Test where passtrough
-func TestStorm_Where(t *testing.T) {
-	var (
-		s = newTestStorm()
-		q = s.Where("id = ?", 1)
-	)
+func (s *stormSuite) TestWhere(c *C) {
+	q := s.db.Where("id = ?", 123)
 
-	if q.where[0].Statement != "id = ?" {
-		t.Fatalf("Where statement differs in query")
-	}
-
-	if len(q.where[0].Bindings) != 1 && q.where[0].Bindings[0].(int) != 1 {
-		t.Fatalf("Expected where statement value")
-	}
+	c.Assert(q.where, HasLen, 1)
+	c.Assert(q.where[0].Statement, Equals, "id = ?")
+	c.Assert(q.where[0].Bindings, HasLen, 1)
+	c.Assert(q.where[0].Bindings[0], FitsTypeOf, int(123))
+	c.Assert(q.where[0].Bindings[0].(int), Equals, 123)
 }
 
-//Test order passtrough
-func TestStorm_Order(t *testing.T) {
-	var (
-		s = newTestStorm()
-		q = s.Order("test", ASC)
-	)
+func (s *stormSuite) TestOrder(c *C) {
+	q := s.db.Order("test", ASC)
 
-	if q.order[0].Statement != "test" {
-		t.Fatalf("Order statement differs in query")
-	}
-
-	if q.order[0].Direction != ASC {
-		t.Fatalf("Expected order statement value")
-	}
+	c.Assert(q.order, HasLen, 1)
+	c.Assert(q.order[0].Statement, Equals, "test")
+	c.Assert(q.order[0].Direction, Equals, ASC)
 }
 
-//Test limit passtrough
-func TestStorm_Limit(t *testing.T) {
-	var (
-		s = newTestStorm()
-		q = s.Limit(123)
-	)
-
-	if q.limit != 123 {
-		t.Fatalf("Expected limit value of 123 but got %d", q.limit)
-	}
+func (s *stormSuite) TestLimit(c *C) {
+	c.Assert(s.db.Limit(123).limit, Equals, 123)
 }
 
-//Test offset passtrough
-func TestStorm_Offset(t *testing.T) {
-	var (
-		s = newTestStorm()
-		q = s.Offset(123)
-	)
-
-	if q.offset != 123 {
-		t.Fatalf("Expected offset value of 123 but got %d", q.offset)
-	}
+func (s *stormSuite) TestOffset(c *C) {
+	c.Assert(s.db.Offset(123).offset, Equals, 123)
 }
 
-//Test Begin
-func TestStorm_Begin(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-	)
-
-	if tx.DB() == s.DB() {
-		t.Fatalf("Expected to get a unique connection diffrent from storm db, but both connections match")
-	}
+func (s *stormSuite) TestBegin(c *C) {
+	c.Assert(s.db.Begin().DB(), Not(Equals), s.db.DB())
 }
 
 //--------------------------------------
 // SQL helpers
 //--------------------------------------
-func TestStorm_generateDeleteSql(t *testing.T) {
-	s := newTestStorm()
+func (s *stormSuite) TestGenerateDeleteSql(c *C) {
 	entity := testStructure{Id: 1, Name: "test"}
-	tbl, _ := s.table(reflect.TypeOf(entity))
+	tbl, _ := s.db.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
+	sqlQuery, bind := s.db.generateDeleteSQL(v, tbl)
 
-	sqlQuery, bind := s.generateDeleteSQL(v, tbl)
-
-	if len(bind) != 1 {
-		t.Fatalf("Expected to get 1 columns to bind but got %v columns back", len(bind))
-	}
-
-	if bind[0] != 1 {
-		t.Errorf("Expected to get 1 bind value with the value 1 but got value %v", bind[0])
-	}
-
-	sqlExpected := "DELETE FROM `test_structure` WHERE `id` = ?"
-	if sqlQuery != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
-	}
+	c.Assert(bind, HasLen, 1)
+	c.Assert(bind[0], Equals, 1)
+	c.Assert(sqlQuery, Equals, "DELETE FROM `test_structure` WHERE `id` = ?")
 }
 
-func TestStorm_generateInsertSQL(t *testing.T) {
-	s := newTestStorm()
+func (s *stormSuite) TestGenerateInsertSQL(c *C) {
 	entity := testStructure{Id: 0, Name: "test"}
-	tbl, _ := s.table(reflect.TypeOf(entity))
+	tbl, _ := s.db.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
+	sqlQuery, bind := s.db.generateInsertSQL(v, tbl)
 
-	sqlQuery, bind := s.generateInsertSQL(v, tbl)
-
-	if len(bind) != 1 {
-		t.Fatalf("Expected to get 1 columns to bind but got %v columns back", len(bind))
-	}
-
-	if bind[0] != "test" {
-		t.Errorf("Expected to get 1 bind value with the value `test` but got value %v", bind[0])
-	}
-
-	sqlExpected := "INSERT INTO `test_structure` (`name`) VALUES (?)"
-	if sqlQuery != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
-	}
+	c.Assert(bind, HasLen, 1)
+	c.Assert(bind[0], Equals, "test")
+	c.Assert(sqlQuery, Equals, "INSERT INTO `test_structure` (`name`) VALUES (?)")
 }
 
-func TestStorm_generateUpdateSQL(t *testing.T) {
-	s := newTestStorm()
+func (s *stormSuite) TestGenerateUpdateSQL(c *C) {
 	entity := testStructure{Id: 2, Name: "test"}
-	tbl, _ := s.table(reflect.TypeOf(entity))
+	tbl, _ := s.db.table(reflect.TypeOf(entity))
 	v := reflect.ValueOf(entity)
+	sqlQuery, bind := s.db.generateUpdateSQL(v, tbl)
 
-	sqlQuery, bind := s.generateUpdateSQL(v, tbl)
-
-	if len(bind) != 2 {
-		t.Fatalf("Expected to get 2 columns to bind but got %v columns back", len(bind))
-	}
-
-	if bind[0] != "test" {
-		t.Errorf("Expected to get 1st bind value with the value `test` but got value %v", bind[0])
-	}
-
-	if bind[1] != 2 {
-		t.Errorf("Expected to get 2nd bind value with the value `2` but got value %v", bind[1])
-	}
-
-	sqlExpected := "UPDATE `test_structure` SET `name` = ? WHERE `id` = ?"
-	if sqlQuery != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
-	}
+	c.Assert(bind, HasLen, 2)
+	c.Assert(bind[0], Equals, "test")
+	c.Assert(bind[1], Equals, 2)
+	c.Assert(sqlQuery, Equals, "UPDATE `test_structure` SET `name` = ? WHERE `id` = ?")
 }
 
-func TestStorm_generateCreateTableSQL(t *testing.T) {
-	s := newTestStorm()
-	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
-
-	sqlQuery := s.generateCreateTableSQL(tbl)
-	sqlExpected := "CREATE TABLE `test_all_type_structure` " +
-		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
-		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT," +
-		"`null_float` REAL,`null_bool` BOOL)"
-	if sqlQuery != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
-	}
+func (s *stormSuite) TestGenerateCreateTableSQL(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
+	c.Assert(s.db.generateCreateTableSQL(tbl), Equals, "CREATE TABLE `test_all_type_structure` "+
+		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT,"+
+		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,"+
+		"`null_float` REAL,`null_bool` BOOL)")
 }
 
-func TestStorm_generateDropTableSQL(t *testing.T) {
-	s := newTestStorm()
-	tbl, _ := s.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
-
-	sqlQuery := s.generateDropTableSQL(tbl)
-	sqlExpected := "DROP TABLE `test_all_type_structure`"
-	if sqlQuery != sqlExpected {
-		t.Errorf("Expected to get query \"%v\" but got the query \"%v\"", sqlExpected, sqlQuery)
-	}
+func (s *stormSuite) TestGenerateDropTableSQL(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
+	c.Assert(s.db.generateDropTableSQL(tbl), Equals, "DROP TABLE `test_all_type_structure`")
 }

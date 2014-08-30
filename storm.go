@@ -27,6 +27,7 @@ type Context interface {
 	Limit(limit int) *Query
 	Offset(offset int) *Query
 	Find(i interface{}, where ...interface{}) error
+	Dependent(i interface{}, columns ...string) error
 	Delete(i interface{}) error
 	Save(i interface{}) error
 
@@ -122,6 +123,12 @@ func (storm *Storm) Offset(offset int) *Query {
 // s.Find(&row,1)
 func (storm *Storm) Find(i interface{}, where ...interface{}) error {
 	return storm.Query().Find(i, where...)
+}
+
+//Dependent will try to fetch all the related enities and populate the dependent fields (slice and single values)
+//You can provide a list with column names if you only want those fields to be populated
+func (storm *Storm) Dependent(i interface{}, columns ...string) error {
+	return storm.Query().Dependent(i, columns...)
 }
 
 //Delete will delete the provided structure from the datastore
@@ -234,11 +241,21 @@ func (storm *Storm) resolveRelations() error {
 	for _, tbl := range storm.tables {
 		for _, rel := range tbl.relations {
 
-			//skip already foudn relations
+			//skip already found relations
 			if rel.relTable != nil || rel.relColumn != nil {
 				continue
 			}
 
+			//find related columns One To One
+			colName := rel.name + "_id"
+			for _, relCol := range tbl.columns {
+				if strings.EqualFold(relCol.columnName, colName) {
+					rel.relColumn = relCol
+					break
+				}
+			}
+
+			//find related columns One To Many
 			if relTbl, ok := storm.tables[rel.goSingularType]; ok == true {
 				for _, relCol := range relTbl.columns {
 					if relCol.columnName == tbl.tableName+"_id" {
@@ -249,6 +266,8 @@ func (storm *Storm) resolveRelations() error {
 					}
 				}
 			}
+
+			//Todo: many to many resolve
 		}
 	}
 	return nil
