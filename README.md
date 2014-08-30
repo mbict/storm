@@ -22,11 +22,18 @@ type Address struct {
 	AddressLine string
 }
 
+type Telephone struct {
+	Id int
+	Number string
+}
+
 type Customer struct {
 	Id               int    `db:"name(id),pk"
 	Firstname	     string 
 	Lastname	     string
-	Adresses		 []Adress
+	Adresses		 []Adresses //oneToMany
+	Telephone		 Telephone
+	TelephoneId		 int64 //oneToOne
 	Hidden           string `db:"ignore"
 }
 
@@ -147,6 +154,22 @@ var customer Customer{Id: 1}
 var addresses []Address
 err := db.Find(&addresses, customer)
 
+```
+
+
+**Get relational/dependent records **
+You can populate related fields oneToOne and oneToMany relations automatic
+```GO
+q := db.Query()
+var customer Customer
+
+//fills in the dependent fields after the fetch
+err := q.Where("id = ?", 1).First(&customer)
+q.Dependent(&customer, "Addresses", "Telephone")
+
+//or direct by specifying the columns to populate 
+var customers []Customer
+err := q.DependentColumns("Adresses", "Telephone").Find(&customers)
 ```
 
 **Get one/first entity method **
