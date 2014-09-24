@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 )
 
@@ -16,6 +17,7 @@ type (
 
 	where struct {
 		Statement string
+		Table     string
 		Bindings  []interface{}
 	}
 
@@ -262,7 +264,7 @@ func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 	case int, int8, int16, int32, uint, uint8, uint16, uint32, int64, uint64, sql.NullInt64:
 		if len(tbl.keys) == 1 {
 			if len(where) == 1 {
-				query.Where(fmt.Sprintf("%s = ?", query.ctx.Dialect().Quote(tbl.keys[0].columnName)), where...)
+				query.Where(fmt.Sprintf("%s = ?", tbl.keys[0].columnName), where...)
 			} else {
 				return errors.New("not implemented having multiple pk values for find")
 			}
@@ -273,7 +275,7 @@ func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 		v := reflect.Indirect(reflect.ValueOf(t))
 		if v.Kind() == reflect.Struct {
 			if tbl, ok := query.ctx.table(v.Type()); ok {
-				condition := fmt.Sprintf("%s = ?", query.ctx.Dialect().Quote(tbl.tableName+"_id"))
+				condition := fmt.Sprintf("%s = ?", tbl.tableName+"_id")
 				if nil != tbl.aiColumn {
 					query.Where(condition, v.FieldByIndex(tbl.aiColumn.goIndex).Int())
 					return nil
@@ -506,26 +508,25 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 		if pos > 0 {
 			sql.WriteString(", ")
 		}
-		sql.WriteString(fmt.Sprintf("`%v`", col.columnName))
+		sql.WriteString(fmt.Sprintf("%s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(col.columnName)))
 		pos++
 	}
 
 	//add table name
-	sql.WriteString(fmt.Sprintf(" FROM `%v`", tbl.tableName))
+	sql.WriteString(fmt.Sprintf(" FROM %s", query.ctx.Dialect().Quote(tbl.tableName)))
 
 	//add where
+	var sqlStatements bytes.Buffer
 	if len(query.where) > 0 {
-
-		sql.WriteString(" WHERE ")
+		sqlStatements.WriteString(" WHERE ")
 
 		//create where keys
 		pos = 0
 		for _, cond := range query.where {
 			if pos > 0 {
-				sql.WriteString(" AND ")
+				sqlStatements.WriteString(" AND ")
 			}
-			/* @todo need to implement error handling */
-			sql.WriteString(cond.Statement)
+			sqlStatements.WriteString(cond.Statement)
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
@@ -533,16 +534,29 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 
 	//add order
 	if len(query.order) > 0 {
-		sql.WriteString(" ORDER BY ")
+		sqlStatements.WriteString(" ORDER BY ")
 		pos = 0
 		for _, col := range query.order {
 			if pos > 0 {
-				sql.WriteString(", ")
+				sqlStatements.WriteString(", ")
 			}
-			sql.WriteString(fmt.Sprintf("`%s` %s", col.Statement, col.Direction))
+			sqlStatements.WriteString(fmt.Sprintf("%s %s", col.Statement, col.Direction))
 			pos++
 		}
 	}
+	
+	statementsString, tbls := query.formatAndResolveStatement(sqlStatements.String(), tbl)
+	
+	//join the related tables if posible
+	for _,relatedTbl := range tbls {
+		sql.WriteString(fmt.Sprintf(" JOIN %s ON %s.%s = %s.%s", 
+			query.ctx.Dialect().Quote(relatedTbl.tableName),
+			query.ctx.Dialect().Quote(relatedTbl.tableName),
+			"??",
+			query.ctx.Dialect().Quote(tbl.tableName),
+			query.ctx.Dialect().Quote(tbl.aiColumn.columnName) ) )
+	}
+	sql.WriteString(statementsString)
 
 	//add limit
 	if query.limit > 0 {
@@ -563,25 +577,98 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
 	var pos int
 
 	//add table name
-	sql.WriteString(fmt.Sprintf("SELECT COUNT(*) FROM %s", query.ctx.Dialect().Quote(tbl.tableName)))
+	sql.WriteString(fmt.Sprintf("SELECT COUNT(%s.*) FROM %s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.tableName)))
 
 	//add where
+	var sqlStatements bytes.Buffer
 	if len(query.where) > 0 {
-
-		sql.WriteString(" WHERE ")
+		sqlStatements.WriteString(" WHERE ")
 
 		//create where keys
 		pos = 0
 		for _, cond := range query.where {
 			if pos > 0 {
-				sql.WriteString(" AND ")
+				sqlStatements.WriteString(" AND ")
 			}
-
-			sql.WriteString(cond.Statement)
+			sqlStatements.WriteString(cond.Statement)
 			bindVars = append(bindVars, cond.Bindings...)
 			pos++
 		}
 	}
+	statementsString, tbls := query.formatAndResolveStatement(sqlStatements.String(), tbl)
+	
+	//join the related tables if posible
+	for _,relatedTbl := range tbls {
+		sql.WriteString(fmt.Sprintf(" JOIN %s ON %s.%s = %s.%s", 
+			query.ctx.Dialect().Quote(relatedTbl.tableName),
+			query.ctx.Dialect().Quote(relatedTbl.tableName),
+			"??",
+			query.ctx.Dialect().Quote(tbl.tableName),
+			query.ctx.Dialect().Quote(tbl.aiColumn.columnName) ) )
+	}
+	sql.WriteString(statementsString)
+	
 
 	return sql.String(), bindVars
+}
+
+// extractStatment extracts the statement
+var (
+	reExtract       = regexp.MustCompile("'?[0-9A-Za-z_-]+\\.[0-9A-Za-z_-]+|'?[0-9A-Za-z_-]+")
+	reReservedWords = regexp.MustCompile("^IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+$")
+)
+
+func (query *Query) formatAndResolveStatement(in string, tbl *table) (string, []*table) {
+
+	var (
+		relatedTbls      = make(map[string]*table)
+		results          = reExtract.FindAllStringIndex(in, -1)
+		offsetCorrection = 0
+	)
+	for _, match := range results {
+		tmp := in[(match[0] + offsetCorrection):(match[1] + offsetCorrection)]
+		if tmp[0] == '\'' || reReservedWords.MatchString(tmp) {
+			continue
+		}
+
+		targetTbl := tbl
+		colName := ""
+		parts := strings.Split(tmp, ".")
+
+		if len(parts) == 2 {
+			ok := true
+			targetTbl, ok = query.ctx.tableByName(camelToSnake(parts[0]))
+			if !ok {
+				continue
+			}
+			colName = camelToSnake(parts[1])
+		} else {
+			//use current table
+			colName = camelToSnake(parts[0])
+		}
+
+		//find if column exists in table definition
+		for _, col := range targetTbl.columns {
+			if strings.EqualFold(col.columnName, colName) {
+				if targetTbl != tbl {
+					if _, ok := relatedTbls[targetTbl.tableName]; !ok {
+						relatedTbls[targetTbl.tableName] = targetTbl
+					}
+				}
+				replacement := query.ctx.Dialect().Quote(targetTbl.tableName) + "." + query.ctx.Dialect().Quote(col.columnName)
+				in = in[:match[0]+offsetCorrection] + replacement + in[match[1]+offsetCorrection:]
+				offsetCorrection = offsetCorrection + (len(replacement) - (match[1] - match[0]))
+				continue
+			}
+		}
+	}
+
+	result := make([]*table, len(relatedTbls))
+	i := 0
+	for _, tbl := range relatedTbls {
+		result[i] = tbl
+		i++
+	}
+
+	return in, result
 }

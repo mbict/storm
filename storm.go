@@ -32,6 +32,7 @@ type Context interface {
 	Save(i interface{}) error
 
 	table(t reflect.Type) (tbl *table, ok bool)
+	tableByName(s string) (tbl *table, ok bool)
 	logger() *log.Logger
 }
 
@@ -505,6 +506,18 @@ func (storm *Storm) table(t reflect.Type) (tbl *table, ok bool) {
 
 	tbl, ok = storm.tables[t]
 	return
+}
+
+//find table by name
+func (storm *Storm) tableByName(s string) (tbl *table, ok bool) {
+	storm.tableLock.RLock()
+	defer storm.tableLock.RUnlock()
+	for _, tbl := range storm.tables {
+		if strings.EqualFold(tbl.tableName, s) {
+			return tbl, true
+		}
+	}
+	return nil, false
 }
 
 func (storm *Storm) logger() *log.Logger {

@@ -103,6 +103,10 @@ func (transaction *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
 	return transaction.storm.table(t)
 }
 
+func (transaction *Transaction) tableByName(s string) (tbl *table, ok bool) {
+	return transaction.storm.tableByName(s)
+}
+
 func (transaction *Transaction) logger() *log.Logger {
 	return transaction.storm.log
 }

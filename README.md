@@ -191,6 +191,14 @@ var address Address
 err := db.Find(&address, customer)
 ```
 
+**Auto joins when related columns are queried **
+The next stament will join the customer table on the address table
+```GO
+q := db.Query()
+var address Address
+err := q.Where("customer.name = ?", "piet").First(&address)
+```
+
 **Get the count**
 ```GO
 q := db.Query()

@@ -767,3 +767,16 @@ func (s *stormSuite) TestGenerateDropTableSQL(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
 	c.Assert(s.db.generateDropTableSQL(tbl), Equals, "DROP TABLE `test_all_type_structure`")
 }
+
+func (s *stormSuite) TestTableByName(c *C) {
+	epectedTbl, ok := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	c.Assert(ok, Equals, true)
+
+	tbl, ok := s.db.tableByName("test_structure")
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, Equals, epectedTbl)
+
+	tbl, ok = s.db.tableByName("testStructureNoExistie")
+	c.Assert(ok, Equals, false)
+	c.Assert(tbl, IsNil)
+}
