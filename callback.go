@@ -1,9 +1,6 @@
 package storm
 
-import (
-	"fmt"
-	"reflect"
-)
+import "reflect"
 
 type callback map[string]reflect.Method
 
@@ -26,8 +23,6 @@ func (cb callback) invoke(v reflect.Value, callMethod string, ctx Context) error
 		switch argType {
 		case contextType:
 			in[i] = reflect.ValueOf(ctx)
-		default:
-			return fmt.Errorf("value for callback argument not found for type %v", argType)
 		}
 	}
 

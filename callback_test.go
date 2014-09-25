@@ -3,9 +3,11 @@ package storm
 import (
 	"errors"
 	"reflect"
-	"testing"
+
+	. "gopkg.in/check.v1"
 )
 
+//test structure
 type testCallbackStructure struct {
 	ctx Context
 
@@ -39,77 +41,45 @@ func (t *testCallbackStructure) ErrorCallback() error {
 
 func (t *testCallbackStructure) notExportedThusNotRegistable() {}
 
-func TestCallback_RegisterCallback(t *testing.T) {
+//suite
+type callbackSuite struct{}
+
+var _ = Suite(&callbackSuite{})
+
+//tests
+func (s *callbackSuite) TestRegisterCallback(c *C) {
 	v := reflect.ValueOf((*testCallbackStructure)(nil))
-	c := make(callback)
+	cb := make(callback)
 
-	//non existing
-	if c.registerCallback(v, "test") == true {
-		t.Errorf("Expected false, function `test` is not a valid callback")
-	}
-
-	//non exported
-	if c.registerCallback(v, "notExportedThusNotRegistable") == true {
-		t.Errorf("Expected false, function `notExportedThusNotRegistable` is not a valid callback")
-	}
-
-	//invalid argument exported
-	if c.registerCallback(v, "InvalidArgument") == true {
-		t.Errorf("Expected false, function `InvalidArgument` is not a valid callback")
-	}
-
-	//no params no return
-	if c.registerCallback(v, "NoReturnCallback") == false {
-		t.Errorf("Expected true, function `NoReturnCallback` is a valid callback")
-	}
-
-	//params and return
-	if c.registerCallback(v, "ErrorCallback") == false {
-		t.Errorf("Expected true, function `ErrorCallback` is a valid callback")
-	}
+	c.Assert(cb.registerCallback(v, "test"), Equals, false)                         //non existing
+	c.Assert(cb.registerCallback(v, "notExportedThusNotRegistable"), Equals, false) //not exported
+	c.Assert(cb.registerCallback(v, "InvalidArgument"), Equals, false)              //invalid arguments exported
+	c.Assert(cb.registerCallback(v, "NoReturnCallback"), Equals, true)              //no params and return type OK
+	c.Assert(cb.registerCallback(v, "NoErrorCallback"), Equals, true)               //params and return
+	c.Assert(cb.registerCallback(v, "ErrorCallback"), Equals, true)                 //only return
 }
 
-func TestCallback_Invoke(t *testing.T) {
-
-	s := newTestStorm()
-	st := &testCallbackStructure{ctx: s}
+func (s *callbackSuite) TestInvoke(c *C) {
+	db := newTestStorm()
+	st := &testCallbackStructure{ctx: db}
 	v := reflect.ValueOf(st)
-	c := make(callback)
-	if !c.registerCallback(v, "NoReturnCallback") || !c.registerCallback(v, "NoErrorCallback") || !c.registerCallback(v, "ErrorCallback") {
-		t.Fatalf("Cannot register test callbacks for test")
-	}
+	cb := make(callback)
 
-	//no arguments no return
-	err := c.invoke(v, "NoReturnCallback", nil)
-	if err != nil {
-		t.Errorf("Did not expected a error but got one `%v`", err)
-	}
+	//register test callbacks
+	c.Assert(cb.registerCallback(v, "NoReturnCallback"), Equals, true)
+	c.Assert(cb.registerCallback(v, "NoErrorCallback"), Equals, true)
+	c.Assert(cb.registerCallback(v, "ErrorCallback"), Equals, true)
 
-	if st.noReturnCallbackInvoked != true {
-		t.Errorf("Expected invoked method but its not invoked")
-	}
+	//check no return callback is called
+	c.Assert(cb.invoke(v, "NoReturnCallback", nil), IsNil)
+	c.Assert(st.noReturnCallbackInvoked, Equals, true)
 
 	//nil error returned test
-	err = c.invoke(v, "NoErrorCallback", s)
-	if err != nil {
-		t.Errorf("Did not expected a error but got one `%v`", err)
-	}
-
-	if st.noErrorCallbackInvoked != true {
-		t.Errorf("Expected invoked method but its not invoked")
-	}
-
-	if st.noErrorCallbackGotContextArg != true {
-		t.Errorf("Expected query non nil argument")
-	}
+	c.Assert(cb.invoke(v, "NoErrorCallback", db), IsNil)
+	c.Assert(st.noErrorCallbackInvoked, Equals, true)
+	c.Assert(st.noErrorCallbackGotContextArg, Equals, true)
 
 	//with return and arguments
-	err = c.invoke(v, "ErrorCallback", s)
-	if err == nil {
-		t.Error("Did expected a error but got none")
-	}
-
-	if st.errorCallbackInvoked != true {
-		t.Errorf("Expected invoked method but its not invoked")
-	}
+	c.Assert(cb.invoke(v, "ErrorCallback", db), NotNil)
+	c.Assert(st.errorCallbackInvoked, Equals, true)
 }

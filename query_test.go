@@ -2,10 +2,8 @@ package storm
 
 import (
 	"database/sql"
-	"fmt"
-	"reflect"
-
 	. "gopkg.in/check.v1"
+	"reflect"
 )
 
 type querySuite struct {
@@ -174,6 +172,16 @@ func (s *querySuite) TestFirstFindSlice(c *C) {
 	c.Assert(s.db.Find(&input, `id = ?`, 999), Equals, sql.ErrNoRows)
 	c.Assert(input, HasLen, 0)
 
+	//find with auto join
+	c.Assert(s.db.Query().Where("testRelatedStructure.name = ?", "name 3").Find(&input), IsNil)
+	c.Assert(input, HasLen, 1)
+	c.Assert(input[0].Id, Equals, 2)
+	c.Assert(input[0].Name, Equals, "name 2")
+
+	//find with auto join parent
+	var inputRelated []testRelatedStructure
+	c.Assert(s.db.Query().Where("testStructure.id = ?", 1).Find(&inputRelated), IsNil)
+	c.Assert(inputRelated, HasLen, 2)
 }
 
 //where and inline find with related objec (auto id inject)
@@ -201,6 +209,16 @@ func (s *querySuite) TestCount(c *C) {
 	cnt, err = s.db.Query().Where("id > ?", 999).Count((*testStructure)(nil))
 	c.Assert(err, IsNil)
 	c.Assert(cnt, Equals, int64(0))
+
+	//results with auto join
+	cnt, err = s.db.Query().Where("testRelatedStructure.name = ?", "name 4").Count((*testStructure)(nil))
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(1))
+
+	//results with auto join
+	cnt, err = s.db.Query().Where("testStructure.name = ?", "name").Count((*testRelatedStructure)(nil))
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(2))
 }
 
 //helper tests
@@ -208,7 +226,6 @@ func (s *querySuite) TestGenerateSelect(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
 
 	sql, bind := s.db.Query().generateSelectSQL(tbl)
-	fmt.Println(sql)
 	c.Assert(bind, HasLen, 0)
 	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure`")
 
@@ -231,7 +248,7 @@ func (s *querySuite) TestGenerateSelect_AutoJoin_Parent(c *C) {
 		Order("id", ASC).
 		Order("name", DESC).generateSelectSQL(tbl)
 	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT `test_related_structure`.`id`, `test_related_structure`.`test_structure_id`, `test_related_structure`.`name` FROM `test_related_structure` JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ? ORDER BY `test_related_structure`.`id` ASC, `test_related_structure`.`name` DESC")
+	c.Assert(sql, Equals, "SELECT `test_related_structure`.`id`, `test_related_structure`.`test_structure_id`, `test_related_structure`.`name` FROM `test_related_structure` INNER JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ? ORDER BY `test_related_structure`.`id` ASC, `test_related_structure`.`name` DESC")
 }
 
 func (s *querySuite) TestGenerateSelect_AutoJoin_ToMany(c *C) {
@@ -242,7 +259,7 @@ func (s *querySuite) TestGenerateSelect_AutoJoin_ToMany(c *C) {
 		Order("id", ASC).
 		Order("name", DESC).generateSelectSQL(tbl)
 	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id` ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC")
+	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` INNER JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id` ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC")
 }
 
 func (s *querySuite) TestGenerateCount(c *C) {
@@ -259,6 +276,28 @@ func (s *querySuite) TestGenerateCount(c *C) {
 		Order("name", DESC).generateCountSQL(tbl)
 	c.Assert(bind, HasLen, 2)
 	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ?")
+}
+
+func (s *querySuite) TestGenerateCount_AutoJoin_Parent(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*testRelatedStructure)(nil)).Elem())
+	sql, bind := s.db.Query().Where("id = ?", 1).
+		Where("name = ?", "test").
+		Where("testStructure.name = ?", "test").
+		Order("id", ASC).
+		Order("name", DESC).
+		generateCountSQL(tbl)
+	c.Assert(bind, HasLen, 3)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_related_structure` INNER JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ?")
+}
+
+func (s *querySuite) TestGenerateCount_AutoJoin_ToMany(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	sql, bind := s.db.Query().Where("id = ?", 1).
+		Where("name = ?", "test").
+		Where("testRelatedStructure.name = ?", "test").
+		generateCountSQL(tbl)
+	c.Assert(bind, HasLen, 3)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure` INNER JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id`")
 }
 
 func (s *querySuite) TestFormatAndResolveStatement(c *C) {

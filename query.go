@@ -589,7 +589,7 @@ func (query *Query) generateJoins(tbls []*table, tbl *table) (string, bool) {
 	for _, relatedTbl := range tbls {
 		for _, relTblDef := range relatedTbl.relations {
 			if relTblDef.relTable == tbl {
-				sql.WriteString(fmt.Sprintf(" JOIN %s ON %s.%s = %s.%s",
+				sql.WriteString(fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
 					query.ctx.Dialect().Quote(relatedTbl.tableName),
 					query.ctx.Dialect().Quote(relatedTbl.tableName),
 					query.ctx.Dialect().Quote(relatedTbl.aiColumn.columnName),
@@ -602,7 +602,7 @@ func (query *Query) generateJoins(tbls []*table, tbl *table) (string, bool) {
 
 		for _, relTblDef := range tbl.relations {
 			if relTblDef.relTable == relatedTbl {
-				sql.WriteString(fmt.Sprintf(" JOIN %s ON %s.%s = %s.%s",
+				sql.WriteString(fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
 					query.ctx.Dialect().Quote(relatedTbl.tableName),
 					query.ctx.Dialect().Quote(relatedTbl.tableName),
 					query.ctx.Dialect().Quote(tbl.tableName+"_id"),
