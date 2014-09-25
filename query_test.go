@@ -142,7 +142,8 @@ func (s *querySuite) TestFirstFindSlice(c *C) {
 	//find by inline statmement previous inline should not be added to current query context
 	c.Assert(q.Find(&inputPtr, 2), IsNil)
 	c.Assert(inputPtr, HasLen, 1)
-	c.Assert(inputPtr[0], DeepEquals, &testStructure{Id: 2, Name: "name 2"})
+	c.Assert(inputPtr[0].Id, Equals, 2)
+	c.Assert(inputPtr[0].Name, Equals, "name 2")
 
 	//check if slice count is reset, and not appended (bug)
 	inputPtr = []*testStructure{&testStructure{}}
@@ -170,7 +171,7 @@ func (s *querySuite) TestFirstFindSlice(c *C) {
 	c.Assert(input, HasLen, 3)
 
 	//BUG: make sure if we recycle a pointer its initialized to zero
-	c.Assert(s.db.Find(&input, `id = ?`, 999), IsNil)
+	c.Assert(s.db.Find(&input, `id = ?`, 999), Equals, sql.ErrNoRows)
 	c.Assert(input, HasLen, 0)
 
 }
@@ -222,17 +223,26 @@ func (s *querySuite) TestGenerateSelect(c *C) {
 	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC LIMIT 10 OFFSET 5")
 }
 
-func (s *querySuite) TestGenerateSelect_AutoJoin(c *C) {
+func (s *querySuite) TestGenerateSelect_AutoJoin_Parent(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*testRelatedStructure)(nil)).Elem())
-
-	//where/limit/offset/order/order test
 	sql, bind := s.db.Query().Where("id = ?", 1).
 		Where("name = ?", "test").
 		Where("testStructure.name = ?", "test").
 		Order("id", ASC).
 		Order("name", DESC).generateSelectSQL(tbl)
 	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT `test_related_structure`.`id`, `test_related_structure`.`test_structure_id`, `test_related_structure`.`name` FROM `test_related_structure` JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.id = ? AND `test_related_structure`.name = ? AND `test_structure`.name = ? ORDER BY `test_related_structure`.`id` ASC, `test_related_structure`.`name` DESC LIMIT 10 OFFSET 5")
+	c.Assert(sql, Equals, "SELECT `test_related_structure`.`id`, `test_related_structure`.`test_structure_id`, `test_related_structure`.`name` FROM `test_related_structure` JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ? ORDER BY `test_related_structure`.`id` ASC, `test_related_structure`.`name` DESC")
+}
+
+func (s *querySuite) TestGenerateSelect_AutoJoin_ToMany(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	sql, bind := s.db.Query().Where("id = ?", 1).
+		Where("name = ?", "test").
+		Where("testRelatedStructure.name = ?", "test").
+		Order("id", ASC).
+		Order("name", DESC).generateSelectSQL(tbl)
+	c.Assert(bind, HasLen, 3)
+	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id` ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC")
 }
 
 func (s *querySuite) TestGenerateCount(c *C) {
@@ -240,48 +250,60 @@ func (s *querySuite) TestGenerateCount(c *C) {
 
 	sql, bind := s.db.Query().generateCountSQL(tbl)
 	c.Assert(bind, HasLen, 0)
-	c.Assert(sql, Equals, "SELECT COUNT(`test_structure`.*) FROM `test_structure`")
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure`")
 
 	//where/limit/offset/order/order test
 	sql, bind = s.db.Query().Where("id = ?", 1).
 		Where("name = ?", "test").
-		Limit(10).
-		Offset(5).
 		Order("id", ASC).
 		Order("name", DESC).generateCountSQL(tbl)
 	c.Assert(bind, HasLen, 2)
-	c.Assert(sql, Equals, "SELECT COUNT(`test_structure`.*) FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ?")
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ?")
 }
 
 func (s *querySuite) TestFormatAndResolveStatement(c *C) {
 	tbl, _ := s.db.tableByName("test_structure")
 	tblRelated, _ := s.db.tableByName("test_related_structure")
 
-	statement, tables := s.db.Query().formatAndResolveStatement("a = ?", tbl)
-	c.Assert(statement, Equals, "a = ?")
+	statement, tables := s.db.Query().formatAndResolveStatement(tbl, "a = ?")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "a = ?")
 	c.Assert(tables, HasLen, 0)
 
-	statement, tables = s.db.Query().formatAndResolveStatement("id = ?", tbl)
-	c.Assert(statement, Equals, "`test_structure`.`id` = ?")
+	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "id = ?")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "`test_structure`.`id` = ?")
 	c.Assert(tables, HasLen, 0)
 
-	statement, tables = s.db.Query().formatAndResolveStatement("id = testRelatedStructure.testStructureId", tbl)
-	c.Assert(statement, Equals, "`test_structure`.`id` = `test_related_structure`.`test_structure_id`")
+	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "id = testRelatedStructure.testStructureId")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "`test_structure`.`id` = `test_related_structure`.`test_structure_id`")
 	c.Assert(tables, HasLen, 1)
 	c.Assert(tables[0], Equals, tblRelated)
 
-	statement, tables = s.db.Query().formatAndResolveStatement("(id) = (test_related_structure.test_structure_id)", tbl)
-	c.Assert(statement, Equals, "(`test_structure`.`id`) = (`test_related_structure`.`test_structure_id`)")
+	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "(id) = (test_related_structure.test_structure_id)")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "(`test_structure`.`id`) = (`test_related_structure`.`test_structure_id`)")
 	c.Assert(tables, HasLen, 1)
 	c.Assert(tables[0], Equals, tblRelated)
 
-	statement, tables = s.db.Query().formatAndResolveStatement("(testStructure.id IN testRelatedStructure.testStructureId)", tbl)
-	c.Assert(statement, Equals, "(`test_structure`.`id` IN `test_related_structure`.`test_structure_id`)")
+	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "(testStructure.id IN testRelatedStructure.testStructureId)")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "(`test_structure`.`id` IN `test_related_structure`.`test_structure_id`)")
 	c.Assert(tables, HasLen, 1)
 	c.Assert(tables[0], Equals, tblRelated)
 
-	statement, tables = s.db.Query().formatAndResolveStatement("MIN(testStructure.id) > 'id' AND MAX( testRelatedStructure.testStructureId ) IN 1234", tblRelated)
-	c.Assert(statement, Equals, "MIN(`test_structure`.`id`) > 'id' AND MAX( `test_related_structure`.`test_structure_id` ) IN 1234")
+	statement, tables = s.db.Query().formatAndResolveStatement(tblRelated, "MIN(testStructure.id) > 'id' AND MAX( testRelatedStructure.testStructureId ) IN 1234")
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "MIN(`test_structure`.`id`) > 'id' AND MAX( `test_related_structure`.`test_structure_id` ) IN 1234")
+	c.Assert(tables, HasLen, 1)
+	c.Assert(tables[0], Equals, tbl)
+
+	//test multiple return
+	statement, tables = s.db.Query().formatAndResolveStatement(tblRelated, "MIN(testStructure.id) > 'id' AND MAX( testRelatedStructure.testStructureId ) IN 1234", "testRelatedStructure.testStructureId = ?")
+	c.Assert(statement, HasLen, 2)
+	c.Assert(statement[0], Equals, "MIN(`test_structure`.`id`) > 'id' AND MAX( `test_related_structure`.`test_structure_id` ) IN 1234")
+	c.Assert(statement[1], Equals, "`test_related_structure`.`test_structure_id` = ?")
 	c.Assert(tables, HasLen, 1)
 	c.Assert(tables[0], Equals, tbl)
 }
