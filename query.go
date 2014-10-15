@@ -619,7 +619,7 @@ func (query *Query) generateJoins(tbls []*table, tbl *table) (string, bool) {
 // extractStatment extracts the statement
 var (
 	reExtract       = regexp.MustCompile("'?[0-9A-Za-z_-]+\\.[0-9A-Za-z_-]+|'?[0-9A-Za-z_-]+")
-	reReservedWords = regexp.MustCompile("^IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+$")
+	reReservedWords = regexp.MustCompile("^(WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+)$")
 )
 
 func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, []*table) {
@@ -628,7 +628,6 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 		relatedTbls = make(map[string]*table)
 		out         = make([]string, 0, len(ins))
 	)
-
 	for _, in := range ins {
 		matches := reExtract.FindAllStringIndex(in, -1)
 		offsetCorrection := 0
@@ -637,7 +636,6 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 			if tmp[0] == '\'' || reReservedWords.MatchString(tmp) {
 				continue
 			}
-
 			targetTbl := tbl
 			colName := ""
 			parts := strings.Split(tmp, ".")
