@@ -198,7 +198,6 @@ func findPKs(cols []*column) (pks []*column) {
 
 //find auto increment keys
 func findAI(cols []*column, pks []*column) *column {
-
 	for _, col := range cols {
 		if _, ok := col.settings["ai"]; ok && col.goType.Kind() == reflect.Int {
 			return col
@@ -213,7 +212,6 @@ func findAI(cols []*column, pks []*column) *column {
 }
 
 func camelToSnake(u string) string {
-
 	buf := bytes.NewBufferString("")
 	for i, v := range u {
 		if i > 0 && v >= 'A' && v <= 'Z' {
@@ -226,7 +224,6 @@ func camelToSnake(u string) string {
 }
 
 func snakeToCamel(s string) string {
-
 	buf := bytes.NewBufferString("")
 	for _, v := range strings.Split(s, "_") {
 		if len(v) > 0 {

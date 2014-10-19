@@ -44,6 +44,9 @@ type Query struct {
 
 	dependentFetch   bool
 	dependentColumns []string
+
+	joins  map[string]*table
+	groups map[string]string
 }
 
 func newQuery(ctx Context, parent *Query) *Query {
@@ -618,7 +621,7 @@ func (query *Query) generateJoins(tbls []*table, tbl *table) (string, bool) {
 
 // extractStatment extracts the statement
 var (
-	reExtract       = regexp.MustCompile("'?[0-9A-Za-z_-]+\\.[0-9A-Za-z_-]+|'?[0-9A-Za-z_-]+")
+	reExtract       = regexp.MustCompile("([0-9A-Za-z\\][_-]+\\.)*[0-9A-Za-z_-]+")
 	reReservedWords = regexp.MustCompile("^(WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+)$")
 )
 
@@ -642,8 +645,20 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 
 			if len(parts) == 2 {
 				ok := true
-				targetTbl, ok = query.ctx.tableByName(camelToSnake(parts[0]))
-				if !ok {
+
+				//find table in relations
+				findRelationalTable := func(tbl *table, columnName string) (*table, bool) {
+					for _, rel := range tbl.relations {
+						if strings.EqualFold(rel.name, columnName) {
+							//find table
+							return query.ctx.table(rel.goSingularType.Elem())
+						}
+					}
+					return nil, false
+				}
+
+				targetTbl, ok = findRelationalTable(tbl, camelToSnake(parts[0]))
+				if !ok || targetTbl == nil {
 					continue
 				}
 				colName = camelToSnake(parts[1])
@@ -677,4 +692,208 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 	}
 
 	return out, result
+}
+
+func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
+
+	query.joins = make(map[string]*table)
+	query.groups = make(map[string]string)
+
+	var (
+		joins   = make(map[string]*table)
+		joinSQL = ""
+		out     = make([]string, 0, len(ins))
+	)
+	for _, in := range ins {
+		matches := reExtract.FindAllStringIndex(in, -1)
+		offsetCorrection := 0
+		for _, match := range matches {
+			tmp := in[(match[0] + offsetCorrection):(match[1] + offsetCorrection)]
+
+			//filter out reserved words
+			if tmp[0] == '\'' || reReservedWords.MatchString(tmp) {
+				continue
+			}
+
+			parts := strings.Split(tmp, ".")
+			colName := camelToSnake(parts[len(parts)-1])
+			targetTbl := tbl
+			alias := tbl.tableName
+
+			//find table in relations
+			findRelationalTable := func(tbl *table, columnName string) (*table, *relation, bool) {
+				for _, rel := range tbl.relations {
+					if strings.EqualFold(rel.name, columnName) {
+						tbl, ok := query.ctx.table(rel.goSingularType.Elem())
+						return tbl, rel, ok
+					}
+				}
+				return nil, nil, false
+			}
+
+			//helper to make indirect
+			typeIndirect := func(t reflect.Type) reflect.Type {
+				if t.Kind() == reflect.Ptr {
+					return t.Elem()
+				}
+				return t
+			}
+
+			//Find parent relation
+			findParentTable := func(tbl *table, tableName string) (*table, *relation, bool) {
+				//extract hint column (if used)
+				tableParts := strings.Split(tableName, "[")
+				tableName = tableParts[0]
+	
+				if joinTbl, ok := query.ctx.tableByName(tableName); ok {
+					colName := ""
+					if len(tableParts) >= 2 {
+						colName = camelToSnake(tableParts[1][:len(tableParts[1])-1])
+					}
+		
+					for _, rel := range joinTbl.relations {
+						if typeIndirect(rel.goType) == typeIndirect(tbl.goType) &&
+							(colName == "" || strings.EqualFold(colName, rel.name)) {
+							return joinTbl, rel, true
+						}
+					}
+				}
+				return nil, nil, false
+			}
+
+			//if there are more than 1 parts we need to check
+			if len(parts) >= 2 {
+
+				//check if the first table is not the current table we are working with
+				startOffset := 0
+				if strings.EqualFold(camelToSnake(parts[0]), targetTbl.tableName) {
+					startOffset = 1
+				}
+
+				for _, tblToJoin := range parts[startOffset : len(parts)-1] {
+					tableJoinStatement := camelToSnake(tblToJoin)
+
+					//normal join
+					joinTbl, rel, ok := findRelationalTable(targetTbl, tableJoinStatement)
+					if !ok {
+						//no normal join can be resolved we do a search for a parent(reversed) join
+						joinTbl, rel, ok = findParentTable(targetTbl, tableJoinStatement)
+						if !ok {
+							return nil, "", nil, fmt.Errorf("Cannot resolve table `%s` in statement `%s`", tblToJoin, tmp)
+						}
+						nextAlias := alias + "_" + joinTbl.tableName + "_" + rel.name
+
+						//only create join when not found
+						if _, ok := query.joins[nextAlias]; !ok {
+							query.joins[nextAlias] = joinTbl
+							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + ".id = " + nextAlias + "." + rel.name + "_id"
+
+							//joining a parent table many to one, need to add a group here
+							query.groups[tbl.tableName+"."+tbl.aiColumn.columnName] = tbl.tableName + "." + tbl.aiColumn.columnName
+						}
+						alias = nextAlias
+					} else {
+
+						nextAlias := alias + "_" + rel.name
+						//only create join when not found
+						if _, ok := query.joins[nextAlias]; !ok {
+							query.joins[nextAlias] = joinTbl
+							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.name + "_id = " + nextAlias + ".id"
+						}
+						alias = nextAlias
+					}
+					targetTbl = joinTbl
+				}
+			}
+
+			//find if column exists in table definition
+			colFound := false
+			for _, col := range targetTbl.columns {
+				if strings.EqualFold(col.columnName, colName) {
+					replacement := query.ctx.Dialect().Quote(alias) + "." + query.ctx.Dialect().Quote(colName)
+
+					in = in[:match[0]+offsetCorrection] + replacement + in[match[1]+offsetCorrection:]
+					offsetCorrection = offsetCorrection + (len(replacement) - (match[1] - match[0]))
+
+					colFound = true
+					break
+				}
+			}
+
+			if !colFound {
+				return nil, "", nil, fmt.Errorf("Cannot find column `%s` found in table `%s` used in statement `%s`", colName, targetTbl.tableName, tmp)
+			}
+		}
+
+		out = append(out, in)
+	}
+
+	return out, joinSQL, joins, nil
+}
+
+func (query *Query) generateJoin(name string, join *table, parent *table) string {
+	for _, joinRels := range join.relations {
+		if joinRels.relTable == parent {
+			return fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
+				query.ctx.Dialect().Quote(join.tableName),
+				query.ctx.Dialect().Quote(join.tableName),
+				query.ctx.Dialect().Quote(join.aiColumn.columnName),
+				query.ctx.Dialect().Quote(parent.tableName),
+				query.ctx.Dialect().Quote(join.tableName+"_id"))
+		}
+	}
+
+	for _, parentRels := range parent.relations {
+		if parentRels.relTable == join {
+			return fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
+				query.ctx.Dialect().Quote(join.tableName),
+				query.ctx.Dialect().Quote(join.tableName),
+				query.ctx.Dialect().Quote(parent.tableName+"_id"),
+				query.ctx.Dialect().Quote(parent.tableName),
+				query.ctx.Dialect().Quote(parent.aiColumn.columnName))
+		}
+	}
+
+	return ""
+
+}
+
+func (query *Query) generateSelectSQL2(tbl *table) (string, []interface{}, error) {
+
+	//generate statements
+	where, bindVars := query.generateWhere()
+	order := query.generateOrder()
+
+	statements, joins, _, err := query.formatAndResolveStatement2(tbl, where, order)
+
+	if err != nil {
+		return "", nil, err
+	}
+
+	//write query
+	sql := bytes.NewBufferString("SELECT ")
+	pos := 0
+	for _, col := range tbl.columns {
+		if pos > 0 {
+			sql.WriteString(", ")
+		}
+		sql.WriteString(fmt.Sprintf("%s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(col.columnName)))
+		pos++
+	}
+	sql.WriteString(fmt.Sprintf(" FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
+	
+	if len(query.groups) >= 1 {
+		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
+	}
+	sql.WriteString(statements[1]) //optional order by
+
+	if query.limit > 0 {
+		sql.WriteString(fmt.Sprintf(" LIMIT %d", query.limit))
+	}
+
+	if query.offset > 0 {
+		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
+	}
+
+	return sql.String(), bindVars, err
 }
