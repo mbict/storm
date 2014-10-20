@@ -312,7 +312,10 @@ func (query *Query) fetchCount(i interface{}) (cnt int64, err error) {
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := query.generateCountSQL(tbl)
+	sqlQuery, bind, err := query.generateCountSQL(tbl)
+	if err != nil {
+		return 0, err
+	}
 
 	if query.ctx.logger() != nil {
 		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
@@ -364,7 +367,10 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := query.generateSelectSQL(tbl)
+	sqlQuery, bind, err := query.generateSelectSQL(tbl)
+	if err != nil {
+		return err
+	}
 	if query.ctx.logger() != nil {
 		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
@@ -434,7 +440,11 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind := query.generateSelectSQL(tbl)
+	sqlQuery, bind, err := query.generateSelectSQL(tbl)
+	if err != nil {
+		return err
+	}
+
 	if query.ctx.logger() != nil {
 		query.ctx.logger().Printf("`%s` binding : %v", sqlQuery, bind)
 	}
@@ -497,11 +507,17 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	}
 }
 
-func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
+func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error) {
+
+	//generate statements
 	where, bindVars := query.generateWhere()
 	order := query.generateOrder()
-	statements, tbls := query.formatAndResolveStatement(tbl, where, order)
-	joins, addGroupBy := query.generateJoins(tbls, tbl)
+
+	statements, joins, _, err := query.formatAndResolveStatement(tbl, where, order)
+
+	if err != nil {
+		return "", nil, err
+	}
 
 	//write query
 	sql := bytes.NewBufferString("SELECT ")
@@ -514,7 +530,8 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 		pos++
 	}
 	sql.WriteString(fmt.Sprintf(" FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
-	if addGroupBy == true {
+
+	if len(query.groups) >= 1 {
 		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
 	}
 	sql.WriteString(statements[1]) //optional order by
@@ -526,22 +543,26 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}) {
 	if query.offset > 0 {
 		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
 	}
-	return sql.String(), bindVars
+
+	return sql.String(), bindVars, err
 }
 
-func (query *Query) generateCountSQL(tbl *table) (string, []interface{}) {
+func (query *Query) generateCountSQL(tbl *table) (string, []interface{}, error) {
 	where, bindVars := query.generateWhere()
-	statement, tbls := query.formatAndResolveStatement(tbl, where)
-	joins, addGroupBy := query.generateJoins(tbls, tbl)
+	order := query.generateOrder()
+	statements, joins, _, err := query.formatAndResolveStatement(tbl, where, order)
+	if nil != err {
+		return "", nil, err
+	}
 
 	//write the query
-	sql := bytes.NewBufferString(fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statement[0]))
+	sql := bytes.NewBufferString(fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
 
-	if addGroupBy == true {
+	if len(query.groups) >= 1 {
 		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
 	}
 
-	return sql.String(), bindVars
+	return sql.String(), bindVars, nil
 }
 
 func (query *Query) generateWhere() (string, []interface{}) {
@@ -583,118 +604,13 @@ func (query *Query) generateOrder() string {
 	return sql.String()
 }
 
-func (query *Query) generateJoins(tbls []*table, tbl *table) (string, bool) {
-	var (
-		sql        bytes.Buffer
-		addGroupBy = false
-	)
-
-	for _, relatedTbl := range tbls {
-		for _, relTblDef := range relatedTbl.relations {
-			if relTblDef.relTable == tbl {
-				sql.WriteString(fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
-					query.ctx.Dialect().Quote(relatedTbl.tableName),
-					query.ctx.Dialect().Quote(relatedTbl.tableName),
-					query.ctx.Dialect().Quote(relatedTbl.aiColumn.columnName),
-					query.ctx.Dialect().Quote(tbl.tableName),
-					query.ctx.Dialect().Quote(relatedTbl.tableName+"_id")))
-
-				break
-			}
-		}
-
-		for _, relTblDef := range tbl.relations {
-			if relTblDef.relTable == relatedTbl {
-				sql.WriteString(fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
-					query.ctx.Dialect().Quote(relatedTbl.tableName),
-					query.ctx.Dialect().Quote(relatedTbl.tableName),
-					query.ctx.Dialect().Quote(tbl.tableName+"_id"),
-					query.ctx.Dialect().Quote(tbl.tableName),
-					query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
-				addGroupBy = true
-				break
-			}
-		}
-	}
-	return sql.String(), addGroupBy
-}
-
 // extractStatment extracts the statement
 var (
-	reExtract       = regexp.MustCompile("([0-9A-Za-z\\][_-]+\\.)*[0-9A-Za-z_-]+")
-	reReservedWords = regexp.MustCompile("^(WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+)$")
+	reExtract       = regexp.MustCompile("'.*'|([0-9A-Za-z\\][_\\-]+\\.)*[0-9A-Za-z_\\-]+")
+	reReservedWords = regexp.MustCompile("^(ASC|DESC|ORDER|GROUP|BY|AS|WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\d+(.\\d+)?)$")
 )
 
-func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, []*table) {
-
-	var (
-		relatedTbls = make(map[string]*table)
-		out         = make([]string, 0, len(ins))
-	)
-	for _, in := range ins {
-		matches := reExtract.FindAllStringIndex(in, -1)
-		offsetCorrection := 0
-		for _, match := range matches {
-			tmp := in[(match[0] + offsetCorrection):(match[1] + offsetCorrection)]
-			if tmp[0] == '\'' || reReservedWords.MatchString(tmp) {
-				continue
-			}
-			targetTbl := tbl
-			colName := ""
-			parts := strings.Split(tmp, ".")
-
-			if len(parts) == 2 {
-				ok := true
-
-				//find table in relations
-				findRelationalTable := func(tbl *table, columnName string) (*table, bool) {
-					for _, rel := range tbl.relations {
-						if strings.EqualFold(rel.name, columnName) {
-							//find table
-							return query.ctx.table(rel.goSingularType.Elem())
-						}
-					}
-					return nil, false
-				}
-
-				targetTbl, ok = findRelationalTable(tbl, camelToSnake(parts[0]))
-				if !ok || targetTbl == nil {
-					continue
-				}
-				colName = camelToSnake(parts[1])
-			} else {
-				//use current table
-				colName = camelToSnake(parts[0])
-			}
-
-			//find if column exists in table definition
-			for _, col := range targetTbl.columns {
-				if strings.EqualFold(col.columnName, colName) {
-					if targetTbl != tbl {
-						if _, ok := relatedTbls[targetTbl.tableName]; !ok {
-							relatedTbls[targetTbl.tableName] = targetTbl
-						}
-					}
-
-					replacement := query.ctx.Dialect().Quote(targetTbl.tableName) + "." + query.ctx.Dialect().Quote(col.columnName)
-					in = in[:match[0]+offsetCorrection] + replacement + in[match[1]+offsetCorrection:]
-					offsetCorrection = offsetCorrection + (len(replacement) - (match[1] - match[0]))
-					break
-				}
-			}
-		}
-		out = append(out, in)
-	}
-
-	result := make([]*table, 0, len(relatedTbls))
-	for _, tbl := range relatedTbls {
-		result = append(result, tbl)
-	}
-
-	return out, result
-}
-
-func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
+func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
 
 	query.joins = make(map[string]*table)
 	query.groups = make(map[string]string)
@@ -710,7 +626,7 @@ func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]str
 		for _, match := range matches {
 			tmp := in[(match[0] + offsetCorrection):(match[1] + offsetCorrection)]
 
-			//filter out reserved words
+			//filter out reserved words, strings and numeric values
 			if tmp[0] == '\'' || reReservedWords.MatchString(tmp) {
 				continue
 			}
@@ -720,17 +636,6 @@ func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]str
 			targetTbl := tbl
 			alias := tbl.tableName
 
-			//find table in relations
-			findRelationalTable := func(tbl *table, columnName string) (*table, *relation, bool) {
-				for _, rel := range tbl.relations {
-					if strings.EqualFold(rel.name, columnName) {
-						tbl, ok := query.ctx.table(rel.goSingularType.Elem())
-						return tbl, rel, ok
-					}
-				}
-				return nil, nil, false
-			}
-
 			//helper to make indirect
 			typeIndirect := func(t reflect.Type) reflect.Type {
 				if t.Kind() == reflect.Ptr {
@@ -739,18 +644,29 @@ func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]str
 				return t
 			}
 
+			//find table in relations
+			findRelationalTable := func(tbl *table, columnName string) (*table, *relation, bool) {
+				for _, rel := range tbl.relations {
+					if strings.EqualFold(rel.name, columnName) {
+						tbl, ok := query.ctx.table(typeIndirect(rel.goSingularType))
+						return tbl, rel, ok
+					}
+				}
+				return nil, nil, false
+			}
+
 			//Find parent relation
 			findParentTable := func(tbl *table, tableName string) (*table, *relation, bool) {
 				//extract hint column (if used)
 				tableParts := strings.Split(tableName, "[")
 				tableName = tableParts[0]
-	
+
 				if joinTbl, ok := query.ctx.tableByName(tableName); ok {
 					colName := ""
 					if len(tableParts) >= 2 {
 						colName = camelToSnake(tableParts[1][:len(tableParts[1])-1])
 					}
-		
+
 					for _, rel := range joinTbl.relations {
 						if typeIndirect(rel.goType) == typeIndirect(tbl.goType) &&
 							(colName == "" || strings.EqualFold(colName, rel.name)) {
@@ -795,10 +711,22 @@ func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]str
 					} else {
 
 						nextAlias := alias + "_" + rel.name
-						//only create join when not found
-						if _, ok := query.joins[nextAlias]; !ok {
-							query.joins[nextAlias] = joinTbl
-							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.name + "_id = " + nextAlias + ".id"
+						switch typeIndirect(rel.goType).Kind() {
+						case reflect.Slice:
+							//joining with a slice table (many to one), need to add a group here
+							query.groups[tbl.tableName+"."+tbl.aiColumn.columnName] = tbl.tableName + "." + tbl.aiColumn.columnName
+
+							if _, ok := query.joins[nextAlias]; !ok { //only create join when not found
+								query.joins[nextAlias] = joinTbl
+								joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + ".id = " + nextAlias + "." + targetTbl.tableName + "_id"
+							}
+
+						case reflect.Struct:
+							//normal one to one
+							if _, ok := query.joins[nextAlias]; !ok { //only create join when not found
+								query.joins[nextAlias] = joinTbl
+								joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.name + "_id = " + nextAlias + ".id"
+							}
 						}
 						alias = nextAlias
 					}
@@ -829,71 +757,4 @@ func (query *Query) formatAndResolveStatement2(tbl *table, ins ...string) ([]str
 	}
 
 	return out, joinSQL, joins, nil
-}
-
-func (query *Query) generateJoin(name string, join *table, parent *table) string {
-	for _, joinRels := range join.relations {
-		if joinRels.relTable == parent {
-			return fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
-				query.ctx.Dialect().Quote(join.tableName),
-				query.ctx.Dialect().Quote(join.tableName),
-				query.ctx.Dialect().Quote(join.aiColumn.columnName),
-				query.ctx.Dialect().Quote(parent.tableName),
-				query.ctx.Dialect().Quote(join.tableName+"_id"))
-		}
-	}
-
-	for _, parentRels := range parent.relations {
-		if parentRels.relTable == join {
-			return fmt.Sprintf(" INNER JOIN %s ON %s.%s = %s.%s",
-				query.ctx.Dialect().Quote(join.tableName),
-				query.ctx.Dialect().Quote(join.tableName),
-				query.ctx.Dialect().Quote(parent.tableName+"_id"),
-				query.ctx.Dialect().Quote(parent.tableName),
-				query.ctx.Dialect().Quote(parent.aiColumn.columnName))
-		}
-	}
-
-	return ""
-
-}
-
-func (query *Query) generateSelectSQL2(tbl *table) (string, []interface{}, error) {
-
-	//generate statements
-	where, bindVars := query.generateWhere()
-	order := query.generateOrder()
-
-	statements, joins, _, err := query.formatAndResolveStatement2(tbl, where, order)
-
-	if err != nil {
-		return "", nil, err
-	}
-
-	//write query
-	sql := bytes.NewBufferString("SELECT ")
-	pos := 0
-	for _, col := range tbl.columns {
-		if pos > 0 {
-			sql.WriteString(", ")
-		}
-		sql.WriteString(fmt.Sprintf("%s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(col.columnName)))
-		pos++
-	}
-	sql.WriteString(fmt.Sprintf(" FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
-	
-	if len(query.groups) >= 1 {
-		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
-	}
-	sql.WriteString(statements[1]) //optional order by
-
-	if query.limit > 0 {
-		sql.WriteString(fmt.Sprintf(" LIMIT %d", query.limit))
-	}
-
-	if query.offset > 0 {
-		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
-	}
-
-	return sql.String(), bindVars, err
 }
