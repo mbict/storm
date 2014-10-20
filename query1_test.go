@@ -57,22 +57,36 @@ func (s *query1Suite) SetUpSuite(c *C) {
 	s.db.SetMaxIdleConns(10)
 	s.db.SetMaxOpenConns(10)
 
+	//TABLES
 	s.db.DB().Exec("CREATE TABLE `person` (`id` INTEGER PRIMARY KEY, `name` TEXT, `address_id` INTEGER, `optional_address_id` INTEGER)")
 	s.db.DB().Exec("CREATE TABLE `address` (`id` INTEGER PRIMARY KEY, `line1` TEXT, `line2` TEXT, `country_id` INTEGER)")
 	s.db.DB().Exec("CREATE TABLE `country` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
-	s.db.DB().Exec("CREATE TABLE `telephone` (`id` INTEGER PRIMARY KEY, `number` TEXT)")
+	s.db.DB().Exec("CREATE TABLE `telephone` (`id` INTEGER PRIMARY KEY, `person_id` INTEGER`, number` TEXT)")
 
-	s.db.DB().Exec("INSERT INTO `person` (`id`, `name`) VALUES (1, 'name')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (4, 'name 4')")
-
-	s.db.DB().Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (1, 1, 'name 1')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (2, 1, 'name 2')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (3, 2, 'name 3')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (4, 2, 'name 4')")
-
+	//TEST DATA
+	s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (1, 'person 1', 1, 2)")
+	s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (2, 'person 2', 3, 4)")
+	s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (3, 'person 3', 5, 1)")
+	s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (4, 'person 4', 2, 2)")
+	
+	s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (1, 'address 1 line 1', 'address 1 line 2', 1)")
+	s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (2, 'address 2 line 1', 'address 2 line 2', 2)")
+	s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (3, 'address 3 line 1', 'address 3 line 2', 3)")
+	s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (4, 'address 4 line 1', 'address 4 line 2', 4)")
+	s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (5, 'address 5 line 1', 'address 5 line 2', 1)")
+	
+	s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (1, 'nl')")
+	s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (2, 'usa')")
+	s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (3, 'de')")
+	s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (4, 'fr')")
+	
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (1, 1, '111-11-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (2, 1, '111-22-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (3, 1, '111-33-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (4, 1, '111-44-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (5, 3, '333-11-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (6, 4, '444-11-1111')")
+	s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (7, 4, '444-22-1111')")
 }
 
 /**************************************************************************
