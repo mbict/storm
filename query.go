@@ -522,17 +522,18 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 	//write query
 	sql := bytes.NewBufferString("SELECT ")
 	pos := 0
+	tblName := query.ctx.Dialect().Quote(tbl.tableName)
 	for _, col := range tbl.columns {
 		if pos > 0 {
 			sql.WriteString(", ")
 		}
-		sql.WriteString(fmt.Sprintf("%s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(col.columnName)))
+		sql.WriteString(fmt.Sprintf("%s.%s", tblName, query.ctx.Dialect().Quote(col.columnName)))
 		pos++
 	}
-	sql.WriteString(fmt.Sprintf(" FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
+	sql.WriteString(fmt.Sprintf(" FROM %s AS %s%s%s", tblName, tblName, joins, statements[0]))
 
 	if len(query.groups) >= 1 {
-		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
+		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
 	}
 	sql.WriteString(statements[1]) //optional order by
 
@@ -556,13 +557,11 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}, error) 
 	}
 
 	//write the query
-	sql := bytes.NewBufferString(fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", query.ctx.Dialect().Quote(tbl.tableName), joins, statements[0]))
-
+	tblName := query.ctx.Dialect().Quote(tbl.tableName)
 	if len(query.groups) >= 1 {
-		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", query.ctx.Dialect().Quote(tbl.tableName), query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
+		return fmt.Sprintf("SELECT COUNT(DISTINCT %s.%s) FROM %s AS %s%s%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName),tblName,tblName, joins, statements[0]), bindVars, nil
 	}
-
-	return sql.String(), bindVars, nil
+	return fmt.Sprintf("SELECT COUNT(*) FROM %s AS %s%s%s", tblName, tblName, joins, statements[0]), bindVars, nil
 }
 
 func (query *Query) generateWhere() (string, []interface{}) {
