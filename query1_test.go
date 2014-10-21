@@ -170,17 +170,17 @@ func (s *query1Suite) Test_Count_WhereAutoJoinMany(c *C) {
 
 	//only 2 unique persons
 	c.Assert(err, IsNil)
-	c.Assert(cnt, Equals, int64(2)) 
+	c.Assert(cnt, Equals, int64(2))
 }
 
 //auto join to parent record (tries to find a related structure)
 func (s *query1Suite) Test_Count_WhereAutoJoinReverseToParent(c *C) {
 	cnt, err := s.db.Query().
-		Where("Address.line2 IN (?,?,?)", "address 1 line 2",  "address 2 line 2", "address 5 line 2").
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
 		Count((*Country)(nil))
 
 	c.Assert(err, IsNil)
-	c.Assert(cnt, Equals, int64(2)) //should have count 2 address 1 & 2 count as 1 + address 2 
+	c.Assert(cnt, Equals, int64(2)) //should have count 2 address 1 & 2 count as 1 + address 2
 }
 
 //auto join to parent record (tries to find a related structure) willl only bind on the first occurnce
@@ -227,19 +227,678 @@ func (s *query1Suite) Test_Count_WhereAutoJoinErrorColumnResolve(c *C) {
 /**************************************************************************
  * Tests First
  **************************************************************************/
+func (s *query1Suite) Test_First(c *C) {
+	var person *Person
+	err := s.db.Query().First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *query1Suite) Test_First_Where(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//simple 1 level
+func (s *query1Suite) Test_First_WhereAutoJoin(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//join 2 levels deep
+func (s *query1Suite) Test_First_WhereAutoJoinDeep(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//auto join trough order by, but no order by stement
+func (s *query1Suite) Test_First_WhereAutoJoinOrderBy(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil})
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *query1Suite) Test_First_WhereAutoJoinComplex(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//joining with a many to one table (count distinct id)
+func (s *query1Suite) Test_First_WhereAutoJoinMany(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		First(&person)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *query1Suite) Test_First_WhereAutoJoinReverseToParent(c *C) {
+	var country *Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		First(&country)
+
+	c.Assert(err, IsNil)
+	c.Assert(country, DeepEquals, &Country{Id: 1, Name: "nl"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the first occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *query1Suite) Test_First_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		First(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+}
+
+func (s *query1Suite) Test_First_WhereAutoJoinReverseToParentHint(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		First(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *query1Suite) Test_First_WhereAutoJoinErrorTableResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *query1Suite) Test_First_WhereAutoJoinErrorColumnResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
 
 /**************************************************************************
  * Tests Find (single)
  **************************************************************************/
+func (s *query1Suite) Test_Find_Single(c *C) {
+	var person *Person
+	err := s.db.Query().Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *query1Suite) Test_Find_Single_Where(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//simple 1 level
+func (s *query1Suite) Test_Find_Single_WhereAutoJoin(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//join 2 levels deep
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinDeep(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//auto join trough order by, but no order by stement
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinOrderBy(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil})
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinComplex(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//joining with a many to one table (count distinct id)
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinMany(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		Find(&person)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinReverseToParent(c *C) {
+	var country *Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		Find(&country)
+
+	c.Assert(err, IsNil)
+	c.Assert(country, DeepEquals, &Country{Id: 1, Name: "nl"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the Find occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinReverseToParentFindOccurence(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		Find(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+}
+
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinReverseToParentHint(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Find(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinErrorTableResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		Find(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *query1Suite) Test_Find_Single_WhereAutoJoinErrorColumnResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Find(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
 
 /**************************************************************************
  * Tests Find (slice)
  **************************************************************************/
+func (s *query1Suite) Test_Find_Slice(c *C) {
+	var persons []*Person
+	err := s.db.Query().Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 14)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *query1Suite) Test_Find_Slice_Where(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 12)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//simple 1 level
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoin(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//join 2 levels deep
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinDeep(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//auto join trough order by, but no order by stement
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 4)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[2], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[3], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil})
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinComplex(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+}
+
+//joining with a many to one table (count distinct id)
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinMany(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		Find(&persons)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinReverseToParent(c *C) {
+	var countries []*Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		Find(&countries)
+
+	c.Assert(err, IsNil)
+	c.Assert(countries, HasLen, 2)
+	c.Assert(countries[0], DeepEquals, &Country{Id: 1, Name: "nl"})
+	c.Assert(countries[1], DeepEquals, &Country{Id: 2, Name: "usa"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the Find occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinReverseToParentFindOccurence(c *C) {
+	var addresses []*Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		Find(&addresses)
+
+	c.Assert(err, IsNil)
+	c.Assert(addresses, HasLen, 3)
+	c.Assert(addresses[0], DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+	c.Assert(addresses[1], DeepEquals, &Address{
+		Id:        2,
+		Line1:     "address 2 line 1",
+		Line2:     "address 2 line 2",
+		Country:   nil,
+		CountryId: 2})
+	c.Assert(addresses[2], DeepEquals, &Address{
+		Id:        3,
+		Line1:     "address 3 line 1",
+		Line2:     "address 3 line 2",
+		Country:   nil,
+		CountryId: 3})
+}
+
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinReverseToParentHint(c *C) {
+	var addresses []*Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Find(&addresses)
+
+	c.Assert(err, IsNil)
+	c.Assert(addresses, HasLen, 1)
+	c.Assert(addresses[0], DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinErrorTableResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		Find(&persons)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *query1Suite) Test_Find_Slice_WhereAutoJoinErrorColumnResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Find(&persons)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
 
 /**************************************************************************
  * Tests generateSelectSQL (helper)
  **************************************************************************/
-
 func (s *query1Suite) Test_GenerateSelectSQL(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
 	sql, bind, err := s.db.Query().
