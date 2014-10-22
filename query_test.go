@@ -2,9 +2,58 @@ package storm
 
 import (
 	"database/sql"
-	. "gopkg.in/check.v1"
 	"reflect"
+
+	_ "github.com/mattn/go-sqlite3"
+	. "gopkg.in/check.v1"
 )
+
+type Person struct {
+	Id                int
+	Name              string
+	Address           *Address
+	AddressId         int
+	OptionalAddress   *Address
+	OptionalAddressId sql.NullInt64
+	Telephones        []*Telephone
+	
+	//test invoke params
+	onInsertInvoked      bool
+	onPostInserteInvoked bool
+	onUpdateInvoked      bool
+	onPostUpdateInvoked  bool
+	onDeleteInvoked      bool
+	onPostDeleteInvoked  bool
+	onInitInvoked        bool
+}
+
+//all posibile callbacks
+func (person *Person) OnInsert()     { person.onInsertInvoked = true }
+func (person *Person) OnPostInsert() { person.onPostInserteInvoked = true }
+func (person *Person) OnUpdate()     { person.onUpdateInvoked = true }
+func (person *Person) OnPostUpdate() { person.onPostUpdateInvoked = true }
+func (person *Person) OnDelete()     { person.onDeleteInvoked = true }
+func (person *Person) OnPostDelete() { person.onPostDeleteInvoked = true }
+func (person *Person) OnInit()       { person.onInitInvoked = true }
+
+type Address struct {
+	Id        int
+	Line1     string
+	Line2     string
+	Country   *Country
+	CountryId int
+}
+
+type Country struct {
+	Id   int
+	Name string
+}
+
+type Telephone struct {
+	Id       int
+	PersonId int
+	Number   int
+}
 
 type querySuite struct {
 	db *Storm
@@ -19,330 +68,1507 @@ func (s *querySuite) SetUpSuite(c *C) {
 	c.Assert(s.db, NotNil)
 	c.Assert(err, IsNil)
 
-	s.db.RegisterStructure((*testStructure)(nil))
-	s.db.RegisterStructure((*testRelatedStructure)(nil))
+	s.db.RegisterStructure((*Person)(nil))
+	s.db.RegisterStructure((*Address)(nil))
+	s.db.RegisterStructure((*Country)(nil))
+	s.db.RegisterStructure((*Telephone)(nil))
 	s.db.SetMaxIdleConns(10)
 	s.db.SetMaxOpenConns(10)
 
-	s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3')")
-	s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (4, 'name 4')")
+	assertExec := func(res sql.Result, err error) {
+		c.Assert(err, IsNil)
+	}
 
-	s.db.DB().Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (1, 1, 'name 1')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (2, 1, 'name 2')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (3, 2, 'name 3')")
-	s.db.DB().Exec("INSERT INTO `test_related_structure` (`id`, `test_structure_id`, `name`) VALUES (4, 2, 'name 4')")
+	//TABLES
+	assertExec(s.db.DB().Exec("CREATE TABLE `person` (`id` INTEGER PRIMARY KEY, `name` TEXT, `address_id` INTEGER, `optional_address_id` INTEGER)"))
+	assertExec(s.db.DB().Exec("CREATE TABLE `address` (`id` INTEGER PRIMARY KEY, `line1` TEXT, `line2` TEXT, `country_id` INTEGER)"))
+	assertExec(s.db.DB().Exec("CREATE TABLE `country` (`id` INTEGER PRIMARY KEY, `name` TEXT)"))
+	assertExec(s.db.DB().Exec("CREATE TABLE `telephone` (`id` INTEGER PRIMARY KEY, `person_id` INTEGER, `number` TEXT)"))
+
+	//TEST DATA
+	assertExec(s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (1, 'person 1', 1, 2)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (2, 'person 2', 3, 4)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (3, 'person 3', 5, 1)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `person` (`id`, `name`, `address_id`, `optional_address_id`) VALUES (4, 'person 4', 2, 2)"))
+
+	assertExec(s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (1, 'address 1 line 1', 'address 1 line 2', 1)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (2, 'address 2 line 1', 'address 2 line 2', 2)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (3, 'address 3 line 1', 'address 3 line 2', 3)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (4, 'address 4 line 1', 'address 4 line 2', 4)"))
+	assertExec(s.db.DB().Exec("INSERT INTO `address` (`id`, `line1`, `line2`, `country_id`) VALUES (5, 'address 5 line 1', 'address 5 line 2', 1)"))
+
+	assertExec(s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (1, 'nl')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (2, 'usa')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (3, 'de')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `country` (`id`, `name`) VALUES (4, 'fr')"))
+
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (1, 1, '111-11-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (2, 1, '111-22-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (3, 1, '111-33-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (4, 1, '111-44-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (5, 3, '333-11-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (6, 4, '444-11-1111')"))
+	assertExec(s.db.DB().Exec("INSERT INTO `telephone` (`id`, `person_id`, `number`) VALUES (7, 4, '444-22-1111')"))
 }
 
-/*** tests ***/
-func (s *querySuite) TestFirst(c *C) {
-	var (
-		input    testStructure
-		inputPtr *testStructure
-	)
+/**************************************************************************
+ * Tests Count
+ **************************************************************************/
+func (s *querySuite) Test_Count(c *C) {
+	cnt, err := s.db.Query().Count((*Person)(nil))
 
-	c.Assert(s.db.Query().Where("id = ?", 999).First(&input), Equals, sql.ErrNoRows)    //no result
-	c.Assert(s.db.Query().Where("id = ?", 999).First(&inputPtr), Equals, sql.ErrNoRows) //no result ptr
-
-	//find
-	c.Assert(s.db.Query().Where("id = ?", 1).First(&input), IsNil)
-	c.Assert(input.Id, Equals, 1)
-	c.Assert(input.Name, Equals, "name")
-
-	//find by Ptr
-	inputPtr = nil
-	c.Assert(s.db.Query().Where("id = ?", 1).First(&inputPtr), IsNil)
-	c.Assert(inputPtr, NotNil)
-	c.Assert(inputPtr.Id, Equals, 1)
-	c.Assert(inputPtr.Name, Equals, "name")
-
-	//check if callback OnInit is called
-	c.Assert(inputPtr.onInitInvoked, Equals, true)
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(4))
 }
 
-func (s *querySuite) TestFindSingle(c *C) {
-	var (
-		input    testStructure
-		inputPtr *testStructure
-	)
-
-	c.Assert(s.db.Query().Where("id = ?", 999).Find(&input), Equals, sql.ErrNoRows)    //empty result, no match
-	c.Assert(s.db.Query().Where("id = ?", 999).Find(&inputPtr), Equals, sql.ErrNoRows) //empty result, no match PTR
-
-	q := s.db.Query()
-
-	//find by id inline where
-	c.Assert(q.Find(&input, 1), IsNil)
-	c.Assert(input.Id, Equals, 1)
-	c.Assert(input.Name, Equals, "name")
-
-	//find by id inline where are not added to the current query context when set inline
-	c.Assert(q.Find(&input, 2), IsNil)
-	c.Assert(input.Id, Equals, 2)
-	c.Assert(input.Name, Equals, "name 2")
-
-	//find by id
-	c.Assert(s.db.Query().Where("id = ?", 1).Find(&input), IsNil)
-	c.Assert(input.Id, Equals, 1)
-	c.Assert(input.Name, Equals, "name")
-
-	//find by id Ptr and assign inline where
-	c.Assert(s.db.Query().Where("id = ?", 2).Find(&inputPtr), IsNil)
-	c.Assert(inputPtr, NotNil)
-	c.Assert(inputPtr.Id, Equals, 2)
-	c.Assert(inputPtr.Name, Equals, "name 2")
-
-	//check if callback OnInit is called
-	c.Assert(inputPtr.onInitInvoked, Equals, true)
+func (s *querySuite) Test_Count_NoResult(c *C) {
+	cnt, err := s.db.Query().
+		Where("id = -1").
+		Count((*Person)(nil))
+	c.Assert(err, Equals, nil)
+	c.Assert(cnt, Equals, int64(0))
 }
 
-func (s *querySuite) TestFindSingle_WhereRelParentRecord(c *C) {
-	var inputPtr *testRelatedStructure
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_Count_Where(c *C) {
+	cnt, err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(112).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		Count((*Person)(nil))
 
-	//where with string condition
-	c.Assert(s.db.Query().Where("test_structure_id = ?", &testStructure{Id: 2, Name: "name 2"}).Find(&inputPtr), IsNil)
-	c.Assert(inputPtr, DeepEquals, &testRelatedStructure{Id: 3, TestStructureId: 2, Name: "name 3"})
-
-	//inline where find
-	inputPtr = nil
-	c.Assert(s.db.Query().Find(&inputPtr, &testStructure{Id: 2, Name: "name 2"}), IsNil)
-	c.Assert(inputPtr, DeepEquals, &testRelatedStructure{Id: 3, TestStructureId: 2, Name: "name 3"})
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(3))
 }
 
-func (s *querySuite) TestFirstFindSlice(c *C) {
-	var (
-		inputPtr []*testStructure
-		input    []testStructure
-	)
-	//empty result, no match PTR
-	inputPtr = nil
-	c.Assert(s.db.Query().Where("id > ?", 999).Find(&inputPtr), Equals, sql.ErrNoRows)
-	c.Assert(inputPtr, IsNil)
+//simple 1 level
+func (s *querySuite) Test_Count_WhereAutoJoin(c *C) {
+	cnt, err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Count((*Person)(nil))
 
-	//empty result, no match
-	c.Assert(s.db.Query().Where("id > ?", 999).Find(&input), Equals, sql.ErrNoRows)
-	c.Assert(input, IsNil)
-
-	//find by id PTR
-	c.Assert(s.db.Query().Where("id > ?", 1).Find(&inputPtr), IsNil)
-	c.Assert(inputPtr, HasLen, 3)
-
-	//find by id PTR and where statement inline
-	q := s.db.Query()
-	c.Assert(q.Find(&inputPtr, 1), IsNil)
-	c.Assert(inputPtr, HasLen, 1)
-	c.Assert(inputPtr[0].Id, Equals, 1)
-	c.Assert(inputPtr[0].Name, Equals, "name")
-
-	//find by inline statmement previous inline should not be added to current query context
-	c.Assert(q.Find(&inputPtr, 2), IsNil)
-	c.Assert(inputPtr, HasLen, 1)
-	c.Assert(inputPtr[0].Id, Equals, 2)
-	c.Assert(inputPtr[0].Name, Equals, "name 2")
-
-	//check if slice count is reset, and not appended (bug)
-	inputPtr = []*testStructure{&testStructure{}}
-	c.Assert(s.db.Query().Where("id > ?", 1).Find(&inputPtr), IsNil)
-	c.Assert(inputPtr, HasLen, 3)
-
-	//find by id and where statement inline
-	input = nil
-	c.Assert(s.db.Query().Find(&input, 1), IsNil)
-	c.Assert(input, HasLen, 1)
-
-	//find by id
-	input = nil
-	c.Assert(s.db.Query().Where("id > ?", 1).Find(&input), IsNil)
-	c.Assert(input, HasLen, 3)
-
-	//check if callback OnInit is called
-	c.Assert(input[0].onInitInvoked, Equals, true)
-	c.Assert(input[1].onInitInvoked, Equals, true)
-	c.Assert(input[2].onInitInvoked, Equals, true)
-
-	//check if slice count is reset, and not appended (bug)
-	input = []testStructure{testStructure{}}
-	c.Assert(s.db.Query().Where("id > ?", 1).Find(&input), IsNil)
-	c.Assert(input, HasLen, 3)
-
-	//BUG: make sure if we recycle a pointer its initialized to zero
-	c.Assert(s.db.Find(&input, `id = ?`, 999), Equals, sql.ErrNoRows)
-	c.Assert(input, HasLen, 0)
-
-	//find with auto join
-	c.Assert(s.db.Query().Where("testRelatedStructure.name = ?", "name 3").Find(&input), IsNil)
-	c.Assert(input, HasLen, 1)
-	c.Assert(input[0].Id, Equals, 2)
-	c.Assert(input[0].Name, Equals, "name 2")
-
-	//find with auto join parent
-	var inputRelated []testRelatedStructure
-	c.Assert(s.db.Query().Where("testStructure.id = ?", 1).Find(&inputRelated), IsNil)
-	c.Assert(inputRelated, HasLen, 2)
-}
-
-//where and inline find with related objec (auto id inject)
-func (s *querySuite) TestFindSlice_WhereRelParentRecord(c *C) {
-	var inputPtr []*testRelatedStructure
-
-	c.Assert(s.db.Query().Where("test_structure_id = ?", &testStructure{Id: 2, Name: "name 2"}).Find(&inputPtr), IsNil)
-	c.Assert(inputPtr, HasLen, 2)
-	c.Assert(inputPtr[0], DeepEquals, &testRelatedStructure{Id: 3, TestStructureId: 2, Name: "name 3"})
-	c.Assert(inputPtr[1], DeepEquals, &testRelatedStructure{Id: 4, TestStructureId: 2, Name: "name 4"})
-
-	//inline where find
-	inputPtr = nil
-	c.Assert(s.db.Query().Find(&inputPtr, &testStructure{Id: 2, Name: "name 2"}), IsNil)
-	c.Assert(inputPtr, HasLen, 2)
-}
-
-func (s *querySuite) TestCount(c *C) {
-	//2 results
-	cnt, err := s.db.Query().Where("id > ?", 2).Count((*testStructure)(nil))
 	c.Assert(err, IsNil)
 	c.Assert(cnt, Equals, int64(2))
+}
 
-	//no results
-	cnt, err = s.db.Query().Where("id > ?", 999).Count((*testStructure)(nil))
+//join 2 levels deep
+func (s *querySuite) Test_Count_WhereAutoJoinDeep(c *C) {
+	cnt, err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		Count((*Person)(nil))
+
 	c.Assert(err, IsNil)
-	c.Assert(cnt, Equals, int64(0))
+	c.Assert(cnt, Equals, int64(2))
+}
 
-	//results with auto join
-	cnt, err = s.db.Query().Where("testRelatedStructure.name = ?", "name 4").Count((*testStructure)(nil))
+//auto join trough order by, but no order by stement
+func (s *querySuite) Test_Count_WhereAutoJoinOrderBy(c *C) {
+	cnt, err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		Count((*Person)(nil))
+
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(4))
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_Count_WhereAutoJoinComplex(c *C) {
+	cnt, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		Count((*Person)(nil))
+
 	c.Assert(err, IsNil)
 	c.Assert(cnt, Equals, int64(1))
+}
 
-	//results with auto join
-	cnt, err = s.db.Query().Where("testStructure.name = ?", "name").Count((*testRelatedStructure)(nil))
+//joining with a many to one table (count distinct id)
+func (s *querySuite) Test_Count_WhereAutoJoinMany(c *C) {
+	cnt, err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		Count((*Person)(nil))
+
+	//only 2 unique persons
 	c.Assert(err, IsNil)
 	c.Assert(cnt, Equals, int64(2))
 }
 
-//helper tests
-func (s *querySuite) TestGenerateSelect(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_Count_WhereAutoJoinReverseToParent(c *C) {
+	cnt, err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		Count((*Country)(nil))
 
-	sql, bind := s.db.Query().generateSelectSQL(tbl)
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(2)) //should have count 2 address 1 & 2 count as 1 + address 2
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the first occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_Count_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
+	cnt, err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		Count((*Address)(nil))
+
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(3))
+}
+
+func (s *querySuite) Test_Count_WhereAutoJoinReverseToParentHint(c *C) {
+	cnt, err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Count((*Address)(nil))
+
+	c.Assert(err, IsNil)
+	c.Assert(cnt, Equals, int64(1))
+}
+
+func (s *querySuite) Test_Count_WhereAutoJoinErrorTableResolve(c *C) {
+	cnt, err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		Count((*Person)(nil))
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+	c.Assert(cnt, Equals, int64(0))
+}
+
+func (s *querySuite) Test_Count_WhereAutoJoinErrorColumnResolve(c *C) {
+	cnt, err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Count((*Person)(nil))
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+	c.Assert(cnt, Equals, int64(0))
+}
+
+/**************************************************************************
+ * Tests First
+ **************************************************************************/
+func (s *querySuite) Test_First(c *C) {
+	var person *Person
+	err := s.db.Query().First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_First_NonPointer(c *C) {
+	var person Person
+	err := s.db.Query().First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_First_NoResult(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id < -1").
+		First(&person)
+	c.Assert(err, Equals, sql.ErrNoRows)
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_First_Where(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//simple 1 level
+func (s *querySuite) Test_First_WhereAutoJoin(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//join 2 levels deep
+func (s *querySuite) Test_First_WhereAutoJoinDeep(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join trough order by, but no order by stement
+func (s *querySuite) Test_First_WhereAutoJoinOrderBy(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_First_WhereAutoJoinComplex(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining with a many to one table (count distinct id)
+func (s *querySuite) Test_First_WhereAutoJoinMany(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		First(&person)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_First_WhereAutoJoinReverseToParent(c *C) {
+	var country *Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		First(&country)
+
+	c.Assert(err, IsNil)
+	c.Assert(country, DeepEquals, &Country{Id: 1, Name: "nl"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the first occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_First_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		First(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+}
+
+func (s *querySuite) Test_First_WhereAutoJoinReverseToParentHint(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		First(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *querySuite) Test_First_WhereAutoJoinErrorTableResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_First_WhereAutoJoinErrorColumnResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+/**************************************************************************
+ * Tests Find (single)
+ **************************************************************************/
+func (s *querySuite) Test_Find_Single(c *C) {
+	var person *Person
+	err := s.db.Query().Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_Find_Single_NonPointer(c *C) {
+	var person Person
+	err := s.db.Query().Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_Find_Single_NoResults(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id < -1").
+		Find(&person)
+
+	c.Assert(err, Equals, sql.ErrNoRows)
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_Find_Single_Where(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//simple 1 level
+func (s *querySuite) Test_Find_Single_WhereAutoJoin(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//join 2 levels deep
+func (s *querySuite) Test_Find_Single_WhereAutoJoinDeep(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join trough order by, but no order by stement
+func (s *querySuite) Test_Find_Single_WhereAutoJoinOrderBy(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_Find_Single_WhereAutoJoinComplex(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		Find(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining with a many to one table (count distinct id)
+func (s *querySuite) Test_Find_Single_WhereAutoJoinMany(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		Find(&person)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_Find_Single_WhereAutoJoinReverseToParent(c *C) {
+	var country *Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		Find(&country)
+
+	c.Assert(err, IsNil)
+	c.Assert(country, DeepEquals, &Country{Id: 1, Name: "nl"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the Find occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_Find_Single_WhereAutoJoinReverseToParentFindOccurence(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		Find(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+}
+
+func (s *querySuite) Test_Find_Single_WhereAutoJoinReverseToParentHint(c *C) {
+	var address *Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Find(&address)
+
+	c.Assert(err, IsNil)
+	c.Assert(address, DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *querySuite) Test_Find_Single_WhereAutoJoinErrorTableResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		Find(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_Find_Single_WhereAutoJoinErrorColumnResolve(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Find(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+/**************************************************************************
+ * Tests Find (slice)
+ **************************************************************************/
+func (s *querySuite) Test_Find_Slice(c *C) {
+	var persons []*Person
+	err := s.db.Query().Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 4)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[2], DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[3], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
+	var persons []Person
+	err := s.db.Query().Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 4)
+	c.Assert(persons[0], DeepEquals, Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[2], DeepEquals, Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[3], DeepEquals, Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+func (s *querySuite) Test_Find_Slice_NoResulss(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("id < -1").
+		Find(&persons)
+
+	c.Assert(err, Equals, sql.ErrNoRows)
+}
+
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_Find_Slice_Where(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(2).
+		Where("id IN (?,?,?)", 1, 3, 4).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//simple 1 level
+func (s *querySuite) Test_Find_Slice_WhereAutoJoin(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//join 2 levels deep
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinDeep(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 2).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join trough order by, but no order by stement
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 4)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[2], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[3], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinComplex(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "person 1").
+		Where("Address.Country.id = ?", 1).
+		Where("optional_address.line1 = ?", "address 2 line 1").
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line2 = ?", "address 1 line 2").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//joining with a many to one table (count distinct id)
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinMany(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("telephones.number IN	(?, ?, ?)", "111-11-1111", "111-33-1111", "444-11-1111"). //will match 3 (id: 1, 3, 6)
+		Where("Telephones.Id IN (?,?,?,?)", 1, 2, 3, 6).
+		Find(&persons)
+
+	//only 2 unique persons
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil, 
+		onInitInvoked:true })
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinReverseToParent(c *C) {
+	var countries []*Country
+	err := s.db.Query().
+		Where("Address.line2 IN (?,?,?)", "address 1 line 2", "address 2 line 2", "address 5 line 2").
+		Find(&countries)
+
+	c.Assert(err, IsNil)
+	c.Assert(countries, HasLen, 2)
+	c.Assert(countries[0], DeepEquals, &Country{Id: 1, Name: "nl"})
+	c.Assert(countries[1], DeepEquals, &Country{Id: 2, Name: "usa"})
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the Find occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinReverseToParentFindOccurence(c *C) {
+	var addresses []*Address
+	err := s.db.Query().
+		Where("person.name IN (?,?,?)", "person 1", "person 2", "person 4").
+		Find(&addresses)
+
+	c.Assert(err, IsNil)
+	c.Assert(addresses, HasLen, 3)
+	c.Assert(addresses[0], DeepEquals, &Address{
+		Id:        1,
+		Line1:     "address 1 line 1",
+		Line2:     "address 1 line 2",
+		Country:   nil,
+		CountryId: 1})
+	c.Assert(addresses[1], DeepEquals, &Address{
+		Id:        2,
+		Line1:     "address 2 line 1",
+		Line2:     "address 2 line 2",
+		Country:   nil,
+		CountryId: 2})
+	c.Assert(addresses[2], DeepEquals, &Address{
+		Id:        3,
+		Line1:     "address 3 line 1",
+		Line2:     "address 3 line 2",
+		Country:   nil,
+		CountryId: 3})
+}
+
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinReverseToParentHint(c *C) {
+	var addresses []*Address
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Find(&addresses)
+
+	c.Assert(err, IsNil)
+	c.Assert(addresses, HasLen, 1)
+	c.Assert(addresses[0], DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+//bug no append on an existing slice, should reset to and add 1 item
+func (s *querySuite) Test_Find_Slice_ProvidedSliceResetNoAppend(c *C) {
+	var addresses []*Address = []*Address{&Address{}, &Address{}, &Address{}}
+	err := s.db.Query().
+		Where("line1 = ?", "address 4 line 1").
+		Where("person[optional_address].name = ?", "person 2").
+		Find(&addresses)
+
+	c.Assert(err, IsNil)
+	c.Assert(addresses, HasLen, 1)
+	c.Assert(addresses[0], DeepEquals, &Address{
+		Id:        4,
+		Line1:     "address 4 line 1",
+		Line2:     "address 4 line 2",
+		Country:   nil,
+		CountryId: 4})
+}
+
+func (s *querySuite) Test_Find_Slice_ProvidedSliceResetNoResult(c *C) {
+	var addresses []*Address = []*Address{&Address{}, &Address{}, &Address{}}
+	err := s.db.Query().
+		Where("id < -1").
+		Find(&addresses)
+
+	c.Assert(err, Equals, sql.ErrNoRows)
+	c.Assert(addresses, HasLen, 0)
+}
+
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinErrorTableResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		Find(&persons)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_Find_Slice_WhereAutoJoinErrorColumnResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Find(&persons)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+/**************************************************************************
+ * Tests generateSelectSQL (helper)
+ **************************************************************************/
+func (s *querySuite) Test_GenerateSelectSQL(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
 	c.Assert(bind, HasLen, 0)
-	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure`")
-
-	//where/limit/offset/order/order test
-	sql, bind = s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Limit(10).
-		Offset(5).
-		Order("id", ASC).
-		Order("name", DESC).generateSelectSQL(tbl)
-	c.Assert(bind, HasLen, 2)
-	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC LIMIT 10 OFFSET 5")
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person`")
 }
 
-func (s *querySuite) TestGenerateSelect_AutoJoin_Parent(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testRelatedStructure)(nil)).Elem())
-	sql, bind := s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Where("testStructure.name = ?", "test").
-		Order("id", ASC).
-		Order("name", DESC).generateSelectSQL(tbl)
-	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT `test_related_structure`.`id`, `test_related_structure`.`test_structure_id`, `test_related_structure`.`name` FROM `test_related_structure` INNER JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ? ORDER BY `test_related_structure`.`id` ASC, `test_related_structure`.`name` DESC")
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_GenerateSelectSQL_Where(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(112).
+		Where("id = ?", 1).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"WHERE `person`.`id` = ? "+
+		"ORDER BY `person`.`id` DESC LIMIT 123 OFFSET 112")
 }
 
-func (s *querySuite) TestGenerateSelect_AutoJoin_ToMany(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
-	sql, bind := s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Where("testRelatedStructure.name = ?", "test").
-		Order("id", ASC).
-		Order("name", DESC).generateSelectSQL(tbl)
-	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT `test_structure`.`id`, `test_structure`.`name` FROM `test_structure` INNER JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id` ORDER BY `test_structure`.`id` ASC, `test_structure`.`name` DESC")
+//simple 1 level
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoin(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("optional_address.line1 = ?", 2).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"WHERE `person_optional_address`.`line1` = ?")
 }
 
-func (s *querySuite) TestGenerateCount(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+//join 2 levels deep
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinDeep(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 1).
+		generateSelectSQL(tbl)
 
-	sql, bind := s.db.Query().generateCountSQL(tbl)
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"WHERE `person_optional_address_country`.`id` = ?")
+}
+
+//auto join trough order by
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinOrderBy(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
 	c.Assert(bind, HasLen, 0)
-	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure`")
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"ORDER BY `person_optional_address`.`line1` ASC")
+}
 
-	//where/limit/offset/order/order test
-	sql, bind = s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Order("id", ASC).
-		Order("name", DESC).generateCountSQL(tbl)
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinComplex(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "test").
+		Where("Address.Country.id = ?", 2).
+		Where("optional_address.line1 = ?", 2).
+		Where("OptionalAddress.Country.id = ?", 1).
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line1 = ?", 2).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 7)
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"JOIN address AS person_address ON person.address_id = person_address.id "+
+		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"WHERE `person`.`id` = ? AND `person`.`name` = ? AND `person_address_country`.`id` = ? AND `person_optional_address`.`line1` = ? AND "+
+		"`person_optional_address_country`.`id` = ? AND `person_optional_address_country`.`id` = ? AND `person_address`.`line1` = ?")
+}
+
+//joining with a many to one table
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinMany(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("telephones.number = ?", 1).
+		Where("Telephones.Id IN (?,?,?)", 1, 2, 3).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 4)
+	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
+		"JOIN telephone AS person_telephones ON person.id = person_telephones.person_id "+
+		"WHERE `person_telephones`.`number` = ? AND `person_telephones`.`id` IN (?,?,?) "+
+		"GROUP BY `person`.`id`")
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParent(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Country)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("country.name = ?", "test").
+		Where("Address.line1 = ?", 2).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 3)
+	c.Assert(sql, Equals, "SELECT `country`.`id`, `country`.`name` FROM `country` AS `country` "+
+		"JOIN address AS country_address_country ON country.id = country_address_country.country_id "+
+		"WHERE `country`.`id` = ? AND `country`.`name` = ? AND `country_address_country`.`line1` = ? "+
+		"GROUP BY `country`.`id`")
+}
+
+//auto join to parent record (tries to find a related structure) will only bind on the first occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "piet").
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
 	c.Assert(bind, HasLen, 2)
-	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ?")
+	c.Assert(sql, Equals, "SELECT `address`.`id`, `address`.`line1`, `address`.`line2`, `address`.`country_id` FROM `address` AS `address` "+
+		"JOIN person AS address_person_address ON address.id = address_person_address.address_id "+
+		"WHERE `address`.`id` = ? AND `address_person_address`.`name` = ? "+
+		"GROUP BY `address`.`id`")
 }
 
-func (s *querySuite) TestGenerateCount_AutoJoin_Parent(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testRelatedStructure)(nil)).Elem())
-	sql, bind := s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Where("testStructure.name = ?", "test").
-		Order("id", ASC).
-		Order("name", DESC).
+//parent hinting support if multiple columns of the same type exists in the parent
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentHint(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person[optional_address].name = ?", "piet").
+		generateSelectSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 2)
+	c.Assert(sql, Equals, "SELECT `address`.`id`, `address`.`line1`, `address`.`line2`, `address`.`country_id` FROM `address` AS `address` "+
+		"JOIN person AS address_person_optional_address ON address.id = address_person_optional_address.optional_address_id "+
+		"WHERE `address`.`id` = ? AND `address_person_optional_address`.`name` = ? "+
+		"GROUP BY `address`.`id`")
+}
+
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinErrorTableResolve(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	_, _, err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinErrorColumnResolve(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	_, _, err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		generateSelectSQL(tbl)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+/**************************************************************************
+ * Tests generateCountSQL (helper)
+ **************************************************************************/
+func (s *querySuite) Test_GenerateCountSQL(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
 		generateCountSQL(tbl)
-	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_related_structure` INNER JOIN `test_structure` ON `test_structure`.`id` = `test_related_structure`.`test_structure_id` WHERE `test_related_structure`.`id` = ? AND `test_related_structure`.`name` = ? AND `test_structure`.`name` = ?")
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 0)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person`")
 }
 
-func (s *querySuite) TestGenerateCount_AutoJoin_ToMany(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
-	sql, bind := s.db.Query().Where("id = ?", 1).
-		Where("name = ?", "test").
-		Where("testRelatedStructure.name = ?", "test").
+//select, order by,where, limit and offset syntax check
+func (s *querySuite) Test_GenerateCountSQL_Where(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Order("id", DESC).
+		Limit(123).
+		Offset(112).
+		Where("id = ?", 1).
 		generateCountSQL(tbl)
-	c.Assert(bind, HasLen, 3)
-	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `test_structure` INNER JOIN `test_related_structure` ON `test_related_structure`.`test_structure_id` = `test_structure`.`id` WHERE `test_structure`.`id` = ? AND `test_structure`.`name` = ? AND `test_related_structure`.`name` = ? GROUP BY `test_structure`.`id`")
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person` WHERE `person`.`id` = ?")
 }
 
-func (s *querySuite) TestFormatAndResolveStatement(c *C) {
-	tbl, _ := s.db.tableByName("test_structure")
-	tblRelated, _ := s.db.tableByName("test_related_structure")
+//simple 1 level
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoin(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("optional_address.line1 = ?", 2).
+		generateCountSQL(tbl)
 
-	statement, tables := s.db.Query().formatAndResolveStatement(tbl, "a = ?")
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"WHERE `person_optional_address`.`line1` = ?")
+}
+
+//join 2 levels deep
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinDeep(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("OptionalAddress.Country.id = ?", 1).
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 1)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"WHERE `person_optional_address_country`.`id` = ?")
+}
+
+//auto join trough order by, but no order by stement
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinOrderBy(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Order("optional_address.line1", ASC).
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 0)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id")
+}
+
+//joining multiple tables (test no duplicate joins)
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinComplex(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "test").
+		Where("Address.Country.id = ?", 2).
+		Where("optional_address.line1 = ?", 2).
+		Where("OptionalAddress.Country.id = ?", 1).
+		Where("OptionalAddress.Country.id = ?", 2).
+		Where("Address.line1 = ?", 2).
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 7)
+	c.Assert(sql, Equals, "SELECT COUNT(*) FROM `person` AS `person` "+
+		"JOIN address AS person_address ON person.address_id = person_address.id "+
+		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"WHERE `person`.`id` = ? AND `person`.`name` = ? AND `person_address_country`.`id` = ? AND `person_optional_address`.`line1` = ? AND "+
+		"`person_optional_address_country`.`id` = ? AND `person_optional_address_country`.`id` = ? AND `person_address`.`line1` = ?")
+}
+
+//joining with a many to one table
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinMany(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("telephones.number = ?", 1).
+		Where("Telephones.Id IN (?,?,?)", 1, 2, 3).
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 4)
+	c.Assert(sql, Equals, "SELECT COUNT(DISTINCT `person`.`id`) FROM `person` AS `person` "+
+		"JOIN telephone AS person_telephones ON person.id = person_telephones.person_id "+
+		"WHERE `person_telephones`.`number` = ? AND `person_telephones`.`id` IN (?,?,?)")
+}
+
+//auto join to parent record (tries to find a related structure)
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinReverseToParent(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Country)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("country.name = ?", "test").
+		Where("Address.line1 = ?", 2).
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 3)
+	c.Assert(sql, Equals, "SELECT COUNT(DISTINCT `country`.`id`) FROM `country` AS `country` "+
+		"JOIN address AS country_address_country ON country.id = country_address_country.country_id "+
+		"WHERE `country`.`id` = ? AND `country`.`name` = ? AND `country_address_country`.`line1` = ?")
+}
+
+//auto join to parent record (tries to find a related structure) willl only bind on the first occurnce
+//in this case it will only bind on Address and not on OptionalAddress
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person.name = ?", "piet").
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 2)
+	c.Assert(sql, Equals, "SELECT COUNT(DISTINCT `address`.`id`) FROM `address` AS `address` "+
+		"JOIN person AS address_person_address ON address.id = address_person_address.address_id "+
+		"WHERE `address`.`id` = ? AND `address_person_address`.`name` = ?")
+}
+
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinReverseToParentHint(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
+	sql, bind, err := s.db.Query().
+		Where("id = ?", 1).
+		Where("person[optional_address].name = ?", "piet").
+		generateCountSQL(tbl)
+
+	c.Assert(err, IsNil)
+	c.Assert(bind, HasLen, 2)
+	c.Assert(sql, Equals, "SELECT COUNT(DISTINCT `address`.`id`) FROM `address` AS `address` "+
+		"JOIN person AS address_person_optional_address ON address.id = address_person_optional_address.optional_address_id "+
+		"WHERE `address`.`id` = ? AND `address_person_optional_address`.`name` = ?")
+}
+
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinErrorTableResolve(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	_, _, err := s.db.Query().
+		Where("OptionalAddress.UnknownTable.id = ?", 1).
+		generateCountSQL(tbl)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinErrorColumnResolve(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	_, _, err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		generateCountSQL(tbl)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+/**************************************************************************
+ * Tests formatAndResolveStatement (helper)
+ **************************************************************************/
+func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
+	personTbl, _ := s.db.tableByName("person")
+	//addressTbl, _ := s.db.tableByName("address")
+
+	//no table prefix
+	statement, joins, tables, err := s.db.Query().formatAndResolveStatement(personTbl, "id = ?")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "a = ?")
+	c.Assert(statement[0], Equals, "`person`.`id` = ?")
+	c.Assert(joins, Equals, "")
 	c.Assert(tables, HasLen, 0)
 
-	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "id = ?")
+	//hardcoded string condition, integer and float condition, glued statements, negative numbers
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "id = 'id' AND id = 123 AND id = 12.34 AND id=Id AND 1=id AND id=1 AND id = -1")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "`test_structure`.`id` = ?")
+	c.Assert(statement[0], Equals, "`person`.`id` = 'id' AND `person`.`id` = 123 AND `person`.`id` = 12.34 AND `person`.`id`=`person`.`id` AND 1=`person`.`id` AND `person`.`id`=1 AND `person`.`id` = -1")
+	c.Assert(joins, Equals, "")
 	c.Assert(tables, HasLen, 0)
 
-	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "id = testRelatedStructure.testStructureId")
+	//table prefix
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "Person.id = ?")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "`test_structure`.`id` = `test_related_structure`.`test_structure_id`")
-	c.Assert(tables, HasLen, 1)
-	c.Assert(tables[0], Equals, tblRelated)
+	c.Assert(statement[0], Equals, "`person`.`id` = ?")
+	c.Assert(joins, Equals, "")
+	c.Assert(tables, HasLen, 0)
 
-	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "(id) = (test_related_structure.test_structure_id)")
+	//with auto join
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "address_id = address.id")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "(`test_structure`.`id`) = (`test_related_structure`.`test_structure_id`)")
-	c.Assert(tables, HasLen, 1)
-	c.Assert(tables[0], Equals, tblRelated)
+	c.Assert(statement[0], Equals, "`person`.`address_id` = `person_address`.`id`")
+	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tblRelated)
 
-	statement, tables = s.db.Query().formatAndResolveStatement(tbl, "(testStructure.id IN testRelatedStructure.testStructureId)")
+	//check brackets
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "(address_id) = (address.id)")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "(`test_structure`.`id` IN `test_related_structure`.`test_structure_id`)")
-	c.Assert(tables, HasLen, 1)
-	c.Assert(tables[0], Equals, tblRelated)
+	c.Assert(statement[0], Equals, "(`person`.`address_id`) = (`person_address`.`id`)")
+	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tblRelated)
 
-	statement, tables = s.db.Query().formatAndResolveStatement(tblRelated, "MIN(testStructure.id) > 'id' AND MAX( testRelatedStructure.testStructureId ) IN 1234")
+	//check all in backets
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "(address.id IN person.optionalAddressId)")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
-	c.Assert(statement[0], Equals, "MIN(`test_structure`.`id`) > 'id' AND MAX( `test_related_structure`.`test_structure_id` ) IN 1234")
-	c.Assert(tables, HasLen, 1)
-	c.Assert(tables[0], Equals, tbl)
+	c.Assert(statement[0], Equals, "(`person_address`.`id` IN `person`.`optional_address_id`)")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tblRelated)
 
-	//test multiple return
-	statement, tables = s.db.Query().formatAndResolveStatement(tblRelated, "MIN(testStructure.id) > 'id' AND MAX( testRelatedStructure.testStructureId ) IN 1234", "testRelatedStructure.testStructureId = ?")
+	//check brackets functional brackets
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "MIN(address.id) > 'id' AND MAX( person.Id ) IN (1234, 12.34, id)")
+	c.Assert(err, IsNil)
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "MIN(`person_address`.`id`) > 'id' AND MAX( `person`.`id` ) IN (1234, 12.34, `person`.`id`)")
+	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tbl)
+
+	//test multiple return, double join
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "address.id = 1", "address.country.id = ?")
+	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 2)
-	c.Assert(statement[0], Equals, "MIN(`test_structure`.`id`) > 'id' AND MAX( `test_related_structure`.`test_structure_id` ) IN 1234")
-	c.Assert(statement[1], Equals, "`test_related_structure`.`test_structure_id` = ?")
-	c.Assert(tables, HasLen, 1)
-	c.Assert(tables[0], Equals, tbl)
+	c.Assert(statement[0], Equals, "`person_address`.`id` = 1")
+	c.Assert(statement[1], Equals, "`person_address_country`.`id` = ?")
+	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id JOIN country AS person_address_country ON person_address.country_id = person_address_country.id")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tbl)
+
+	//test join on multiple
+	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "telephones.number = '11223344'")
+	c.Assert(err, IsNil)
+	c.Assert(statement, HasLen, 1)
+	c.Assert(statement[0], Equals, "`person_telephones`.`number` = '11223344'")
+	c.Assert(joins, Equals, " JOIN telephone AS person_telephones ON person.id = person_telephones.person_id")
+	//c.Assert(tables, HasLen, 1)
+	//c.Assert(tables[0], Equals, tbl)
+
 }
+
+/*
+func (s *querySuite) TestDepends(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, _ := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address.Country").
+		generateSelectSQL2(tbl)
+
+	c.Assert(sql, Equals, "SELECT")
+}
+
+func (s *querySuite) TestDependsWhereJoin(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, bind := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address.Country", "OptionalAddress.Country").
+		Where("OptionalAddress.line1 = ?", 2).
+		Where("address.line1 = ?", 2).
+		generateSelectSQL2(tbl)
+
+	c.Assert(bind, HasLen, 2)
+	c.Assert(sql, Equals, "SELECT")
+}
+*/
