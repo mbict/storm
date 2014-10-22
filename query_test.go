@@ -16,7 +16,7 @@ type Person struct {
 	OptionalAddress   *Address
 	OptionalAddressId sql.NullInt64
 	Telephones        []*Telephone
-	
+
 	//test invoke params
 	onInsertInvoked      bool
 	onPostInserteInvoked bool
@@ -265,8 +265,8 @@ func (s *querySuite) Test_First(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_First_NonPointer(c *C) {
@@ -281,8 +281,8 @@ func (s *querySuite) Test_First_NonPointer(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_First_NoResult(c *C) {
@@ -311,8 +311,8 @@ func (s *querySuite) Test_First_Where(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //simple 1 level
@@ -330,8 +330,8 @@ func (s *querySuite) Test_First_WhereAutoJoin(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //join 2 levels deep
@@ -349,8 +349,8 @@ func (s *querySuite) Test_First_WhereAutoJoinDeep(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join trough order by, but no order by stement
@@ -368,8 +368,8 @@ func (s *querySuite) Test_First_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         5,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining multiple tables (test no duplicate joins)
@@ -392,8 +392,8 @@ func (s *querySuite) Test_First_WhereAutoJoinComplex(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining with a many to one table (count distinct id)
@@ -413,8 +413,8 @@ func (s *querySuite) Test_First_WhereAutoJoinMany(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join to parent record (tries to find a related structure)
@@ -496,8 +496,8 @@ func (s *querySuite) Test_Find_Single(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_Find_Single_NonPointer(c *C) {
@@ -512,8 +512,8 @@ func (s *querySuite) Test_Find_Single_NonPointer(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_Find_Single_NoResults(c *C) {
@@ -543,8 +543,90 @@ func (s *querySuite) Test_Find_Single_Where(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_Where_Inline(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Find(&person, 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_Where_InlineStatement(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Find(&person, "id = ?", 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//inline statements should not alter the origianal query
+func (s *querySuite) Test_Find_Single_Where_InlineStatementNotPersistent(c *C) {
+	var person *Person
+	q := s.db.Query()
+	err := q.Find(&person, "id = ?", 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+
+	err = q.Find(&person, "id = ?", 1)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_Where_InlineAutoJoin(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Find(&person, "optional_address.line1 = ?", "address 4 line 1")
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //simple 1 level
@@ -562,8 +644,8 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoin(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //join 2 levels deep
@@ -581,8 +663,8 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoinDeep(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join trough order by, but no order by stement
@@ -600,8 +682,8 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         5,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining multiple tables (test no duplicate joins)
@@ -624,8 +706,8 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoinComplex(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining with a many to one table (count distinct id)
@@ -645,8 +727,8 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoinMany(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join to parent record (tries to find a related structure)
@@ -729,8 +811,8 @@ func (s *querySuite) Test_Find_Slice(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, &Person{
 		Id:                2,
 		Name:              "person 2",
@@ -738,8 +820,8 @@ func (s *querySuite) Test_Find_Slice(c *C) {
 		AddressId:         3,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[2], DeepEquals, &Person{
 		Id:                3,
 		Name:              "person 3",
@@ -747,8 +829,8 @@ func (s *querySuite) Test_Find_Slice(c *C) {
 		AddressId:         5,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[3], DeepEquals, &Person{
 		Id:                4,
 		Name:              "person 4",
@@ -756,8 +838,8 @@ func (s *querySuite) Test_Find_Slice(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
@@ -773,8 +855,8 @@ func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, Person{
 		Id:                2,
 		Name:              "person 2",
@@ -782,8 +864,8 @@ func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
 		AddressId:         3,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[2], DeepEquals, Person{
 		Id:                3,
 		Name:              "person 3",
@@ -791,8 +873,8 @@ func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
 		AddressId:         5,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[3], DeepEquals, Person{
 		Id:                4,
 		Name:              "person 4",
@@ -800,8 +882,8 @@ func (s *querySuite) Test_Find_Slice_NonPointer(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 func (s *querySuite) Test_Find_Slice_NoResulss(c *C) {
@@ -832,8 +914,88 @@ func (s *querySuite) Test_Find_Slice_Where(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//inline on id
+func (s *querySuite) Test_Find_Slice_Where_Inline(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Find(&persons, 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//inline with stement
+func (s *querySuite) Test_Find_Slice_Where_InlineStatement(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Find(&persons, "id IN (?, ?)", 2, 4)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//inline statements should not alter the origianal query
+func (s *querySuite) Test_Find_Slice_Where_InlineStatementNotPersistent(c *C) {
+	var persons []*Person
+	q := s.db.Query()
+	err := q.Find(&persons, "id = ?", 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+
+	err = q.Find(&persons, "id = ?", 1)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                1,
+		Name:              "person 1",
+		Address:           nil,
+		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //simple 1 level
@@ -852,8 +1014,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoin(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, &Person{
 		Id:                4,
 		Name:              "person 4",
@@ -861,8 +1023,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoin(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //join 2 levels deep
@@ -881,8 +1043,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinDeep(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, &Person{
 		Id:                4,
 		Name:              "person 4",
@@ -890,8 +1052,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinDeep(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join trough order by, but no order by stement
@@ -910,8 +1072,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         5,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, &Person{
 		Id:                1,
 		Name:              "person 1",
@@ -919,8 +1081,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[2], DeepEquals, &Person{
 		Id:                4,
 		Name:              "person 4",
@@ -928,8 +1090,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[3], DeepEquals, &Person{
 		Id:                2,
 		Name:              "person 2",
@@ -937,8 +1099,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinOrderBy(c *C) {
 		AddressId:         3,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining multiple tables (test no duplicate joins)
@@ -962,8 +1124,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinComplex(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //joining with a many to one table (count distinct id)
@@ -984,8 +1146,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinMany(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 	c.Assert(persons[1], DeepEquals, &Person{
 		Id:                4,
 		Name:              "person 4",
@@ -993,8 +1155,8 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinMany(c *C) {
 		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
-		Telephones:        nil, 
-		onInitInvoked:true })
+		Telephones:        nil,
+		onInitInvoked:     true})
 }
 
 //auto join to parent record (tries to find a related structure)
