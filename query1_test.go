@@ -632,12 +632,36 @@ func (s *query1Suite) Test_Find_Slice(c *C) {
 	err := s.db.Query().Find(&persons)
 
 	c.Assert(err, IsNil)
-	c.Assert(persons, HasLen, 14)
+	c.Assert(persons, HasLen, 4)
 	c.Assert(persons[0], DeepEquals, &Person{
 		Id:                1,
 		Name:              "person 1",
 		Address:           nil,
 		AddressId:         1,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[1], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[2], DeepEquals, &Person{
+		Id:                3,
+		Name:              "person 3",
+		Address:           nil,
+		AddressId:         5,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 1, Valid: true},
+		Telephones:        nil})
+	c.Assert(persons[3], DeepEquals, &Person{
+		Id:                4,
+		Name:              "person 4",
+		Address:           nil,
+		AddressId:         2,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
 		Telephones:        nil})
@@ -654,7 +678,7 @@ func (s *query1Suite) Test_Find_Slice_Where(c *C) {
 		Find(&persons)
 
 	c.Assert(err, IsNil)
-	c.Assert(persons, HasLen, 12)
+	c.Assert(persons, HasLen, 1)
 	c.Assert(persons[0], DeepEquals, &Person{
 		Id:                1,
 		Name:              "person 1",
