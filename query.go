@@ -45,8 +45,8 @@ type Query struct {
 	dependentFetch   bool
 	dependentColumns []string
 
-	joins  map[string]*table
-	groups map[string]string
+	joins   map[string]*table
+	groupby bool
 }
 
 func newQuery(ctx Context, parent *Query) *Query {
@@ -67,9 +67,7 @@ func newQuery(ctx Context, parent *Query) *Query {
 		q.where = make([]where, 0)
 		q.order = make([]order, 0)
 	}
-
 	return &q
-
 }
 
 //Query Creates a clone of the current query object
@@ -114,10 +112,8 @@ func (query *Query) Where(condition string, bindAttr ...interface{}) *Query {
 				}
 			}
 		}
-
 		bindVars = append(bindVars, val)
 	}
-
 	query.where = append(query.where, where{Statement: condition, Bindings: bindVars})
 	return query
 }
@@ -182,7 +178,7 @@ func (query *Query) Dependent(i interface{}, columns ...string) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("provided input is not a pointer type")
+		return errors.New("provided input is not by reference")
 	}
 
 	v = v.Elem()
@@ -290,7 +286,6 @@ func (query *Query) applyWhere(tbl *table, where ...interface{}) error {
 		}
 		return errors.New("unsupported pk find type")
 	}
-
 	return nil
 }
 
@@ -339,7 +334,7 @@ func (query *Query) fetchCount(i interface{}) (cnt int64, err error) {
 func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("provided input is not a pointer type")
+		return errors.New("provided input is not by reference")
 	}
 
 	//reset element to zero variant
@@ -407,7 +402,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 
 	ts := reflect.TypeOf(i)
 	if ts.Kind() != reflect.Ptr {
-		return errors.New("provided input is not a pointer type")
+		return errors.New("provided input is not by reference")
 	}
 
 	if ts.Elem().Kind() != reflect.Slice {
@@ -475,7 +470,6 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 			}
 			return nil
 		}
-
 		v := reflect.New(tbl.goType)
 
 		//create destination and scan
@@ -512,9 +506,7 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 	//generate statements
 	where, bindVars := query.generateWhere()
 	order := query.generateOrder()
-
 	statements, joins, _, err := query.formatAndResolveStatement(tbl, where, order)
-
 	if err != nil {
 		return "", nil, err
 	}
@@ -532,7 +524,7 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 	}
 	sql.WriteString(fmt.Sprintf(" FROM %s AS %s%s%s", tblName, tblName, joins, statements[0]))
 
-	if len(query.groups) >= 1 {
+	if query.groupby {
 		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
 	}
 	sql.WriteString(statements[1]) //optional order by
@@ -558,8 +550,8 @@ func (query *Query) generateCountSQL(tbl *table) (string, []interface{}, error) 
 
 	//write the query
 	tblName := query.ctx.Dialect().Quote(tbl.tableName)
-	if len(query.groups) >= 1 {
-		return fmt.Sprintf("SELECT COUNT(DISTINCT %s.%s) FROM %s AS %s%s%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName),tblName,tblName, joins, statements[0]), bindVars, nil
+	if query.groupby {
+		return fmt.Sprintf("SELECT COUNT(DISTINCT %s.%s) FROM %s AS %s%s%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName), tblName, tblName, joins, statements[0]), bindVars, nil
 	}
 	return fmt.Sprintf("SELECT COUNT(*) FROM %s AS %s%s%s", tblName, tblName, joins, statements[0]), bindVars, nil
 }
@@ -612,7 +604,6 @@ var (
 func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
 
 	query.joins = make(map[string]*table)
-	query.groups = make(map[string]string)
 
 	var (
 		joins   = make(map[string]*table)
@@ -704,16 +695,15 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + ".id = " + nextAlias + "." + rel.name + "_id"
 
 							//joining a parent table many to one, need to add a group here
-							query.groups[tbl.tableName+"."+tbl.aiColumn.columnName] = tbl.tableName + "." + tbl.aiColumn.columnName
+							query.groupby = true
 						}
 						alias = nextAlias
 					} else {
-
 						nextAlias := alias + "_" + rel.name
 						switch typeIndirect(rel.goType).Kind() {
 						case reflect.Slice:
 							//joining with a slice table (many to one), need to add a group here
-							query.groups[tbl.tableName+"."+tbl.aiColumn.columnName] = tbl.tableName + "." + tbl.aiColumn.columnName
+							query.groupby = true
 
 							if _, ok := query.joins[nextAlias]; !ok { //only create join when not found
 								query.joins[nextAlias] = joinTbl
@@ -751,9 +741,7 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 				return nil, "", nil, fmt.Errorf("Cannot find column `%s` found in table `%s` used in statement `%s`", colName, targetTbl.tableName, tmp)
 			}
 		}
-
 		out = append(out, in)
 	}
-
 	return out, joinSQL, joins, nil
 }

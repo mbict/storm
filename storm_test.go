@@ -219,7 +219,7 @@ func TestStorm_FindWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `provided input is not a pointer type`
+	expectedError = `provided input is not by reference`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}
@@ -295,7 +295,7 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `provided input is not a pointer type`
+	expectedError = `provided input is not by reference`
 	if err == nil || err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
@@ -598,7 +598,7 @@ func TestStorm_SaveWrongInput(t *testing.T) {
 		t.Fatalf("Expected a error but got none")
 	}
 
-	expectedError = `provided input is not a pointer type`
+	expectedError = `provided input is not by reference`
 	if err.Error() != expectedError {
 		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
 	}

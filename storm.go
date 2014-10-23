@@ -277,7 +277,7 @@ func (storm *Storm) resolveRelations() error {
 func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("provided input is not a pointer type")
+		return errors.New("provided input is not by reference")
 	}
 
 	v = v.Elem()
@@ -320,7 +320,7 @@ func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("provided input is not a pointer type")
+		return errors.New("provided input is not by reference")
 	}
 
 	v = v.Elem()

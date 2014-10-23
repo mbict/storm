@@ -250,6 +250,32 @@ func (s *querySuite) Test_Count_WhereAutoJoinErrorColumnResolve(c *C) {
 	c.Assert(cnt, Equals, int64(0))
 }
 
+func (s *querySuite) Test_Count_ErrorStruct(c *C) {
+	cnt, err := s.db.Query().
+		Where("OptionalAddress.notexistingcolumn = ?", 1).
+		Count((*Person)(nil))
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+	c.Assert(cnt, Equals, int64(0))
+}
+
+func (s *querySuite) Test_Count_ErrorNotRegistered(c *C) {
+	type testNotRegistered struct{}
+	_, err := s.db.Query().Count((*testNotRegistered)(nil))
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "no registered structure for `storm.testNotRegistered` found")
+}
+
+func (s *querySuite) Test_Count_ErrorNotAStruct(c *C) {
+	var notastruct int
+	_, err := s.db.Query().Count(notastruct)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not a structure type")
+}
+
 /**************************************************************************
  * Tests First
  **************************************************************************/
@@ -265,6 +291,44 @@ func (s *querySuite) Test_First(c *C) {
 		AddressId:         1,
 		OptionalAddress:   nil,
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_First_WhereObject(c *C) {
+	var person *Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Where("address.id = ?", address).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_First_WhereObjectPtr(c *C) {
+	var person *Person
+	address := &Address{Id: 3}
+	err := s.db.Query().
+		Where("address.id = ?", address).
+		First(&person)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
 		Telephones:        nil,
 		onInitInvoked:     true})
 }
@@ -481,6 +545,31 @@ func (s *querySuite) Test_First_WhereAutoJoinErrorColumnResolve(c *C) {
 	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
 }
 
+func (s *querySuite) Test_First_ErrorNotAStructure(c *C) {
+	var notastruct int
+	err := s.db.Query().First(&notastruct)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not a structure type")
+}
+
+func (s *querySuite) Test_First_ErrorNotRegistred(c *C) {
+	type notRegisteredStruct struct{}
+	var person *notRegisteredStruct
+	err := s.db.Query().First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
+}
+
+func (s *querySuite) Test_First_ErrorNotByReference(c *C) {
+	var person Person
+	err := s.db.Query().First(person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not by reference")
+}
+
 /**************************************************************************
  * Tests Find (single)
  **************************************************************************/
@@ -551,6 +640,43 @@ func (s *querySuite) Test_Find_Single_Where_Inline(c *C) {
 	var person *Person
 	err := s.db.Query().
 		Find(&person, 2)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//use object for inline where
+func (s *querySuite) Test_Find_Single_Where_InlineStatementObject(c *C) {
+	var person *Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&person, "address.id = ?", address)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_Where_InlineStatementObjectPtr(c *C) {
+	var person *Person
+	address := &Address{Id: 3}
+	err := s.db.Query().
+		Find(&person, "address.id = ?", address)
 
 	c.Assert(err, IsNil)
 	c.Assert(person, DeepEquals, &Person{
@@ -793,6 +919,31 @@ func (s *querySuite) Test_Find_Single_WhereAutoJoinErrorColumnResolve(c *C) {
 
 	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+func (s *querySuite) Test_Find_Single_ErrorNotAStructure(c *C) {
+	var notastruct int
+	err := s.db.Query().Find(&notastruct)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not a structure type")
+}
+
+func (s *querySuite) Test_Find_Single_ErrorNotRegistred(c *C) {
+	type notRegisteredStruct struct{}
+	var person *notRegisteredStruct
+	err := s.db.Query().Find(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
+}
+
+func (s *querySuite) Test_Find_Single_ErrorNotByReference(c *C) {
+	var person Person
+	err := s.db.Query().Find(person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not by reference")
 }
 
 /**************************************************************************
@@ -1267,6 +1418,39 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinErrorColumnResolve(c *C) {
 	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
 }
 
+func (s *querySuite) Test_Find_Slice_ErrorSliceHasNoStructureType(c *C) {
+	var notastruct []int
+	err := s.db.Query().Find(&notastruct)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input slice has no structure type")
+}
+
+func (s *querySuite) Test_Find_Slice_ErrorNotRegistred(c *C) {
+	type notRegisteredStruct struct{}
+	var notregistered []*notRegisteredStruct
+	err := s.db.Query().Find(&notregistered)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
+}
+
+func (s *querySuite) Test_Find_Slice_ErrorNotByReference(c *C) {
+	var person []Person
+	err := s.db.Query().Find(person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not by reference")
+}
+
+func (s *querySuite) Test_Find_Slice_ErrorNotByReferencePtr(c *C) {
+	var person []*Person
+	err := s.db.Query().Find(person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not by reference")
+}
+
 /**************************************************************************
  * Tests generateSelectSQL (helper)
  **************************************************************************/
@@ -1285,6 +1469,7 @@ func (s *querySuite) Test_GenerateSelectSQL_Where(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
 	sql, bind, err := s.db.Query().
 		Order("id", DESC).
+		Order("name", ASC).
 		Limit(123).
 		Offset(112).
 		Where("id = ?", 1).
@@ -1294,7 +1479,7 @@ func (s *querySuite) Test_GenerateSelectSQL_Where(c *C) {
 	c.Assert(bind, HasLen, 1)
 	c.Assert(sql, Equals, "SELECT `person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` FROM `person` AS `person` "+
 		"WHERE `person`.`id` = ? "+
-		"ORDER BY `person`.`id` DESC LIMIT 123 OFFSET 112")
+		"ORDER BY `person`.`id` DESC, `person`.`name` ASC LIMIT 123 OFFSET 112")
 }
 
 //simple 1 level
