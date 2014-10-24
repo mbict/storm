@@ -2,8 +2,53 @@ package storm
 
 import (
 	"database/sql"
+	"reflect"
 	"testing"
 )
+
+//test if we get the storm instance back
+func TestTransaction_Storm(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		tx = s.Begin()
+	)
+
+	if tx.Storm() != s {
+		t.Fatalf("Expected to get the same isntance back")
+	}
+}
+
+func TestTransaction_tableByName(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		tx = s.Begin()
+	)
+
+	tbl, ok := tx.tableByName("test_structure")
+	if !ok {
+		t.Fatalf("Expected to get a table back")
+	}
+
+	if tbl != s.tables[reflect.TypeOf((*testStructure)(nil)).Elem()] {
+		t.Fatalf("Wrong instance table returned")
+	}
+}
+
+func TestTransaction_table(t *testing.T) {
+	var (
+		s  = newTestStorm()
+		tx = s.Begin()
+	)
+
+	tbl, ok := tx.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	if !ok {
+		t.Fatalf("Expected to get a table back")
+	}
+
+	if tbl != s.tables[reflect.TypeOf((*testStructure)(nil)).Elem()] {
+		t.Fatalf("Wrong instance table returned")
+	}
+}
 
 //Test where passtrough
 func TestTransaction_Where(t *testing.T) {

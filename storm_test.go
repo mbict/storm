@@ -3,12 +3,28 @@ package storm
 import (
 	"bytes"
 	"database/sql"
-	_ "github.com/mattn/go-sqlite3"
-	. "gopkg.in/check.v1"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+	. "gopkg.in/check.v1"
 )
+
+type testErrorCallbackStruct struct{ Id int }
+
+func (testErrorCallbackStruct) OnDelete() error {
+	return fmt.Errorf("delete callback error")
+}
+
+func (testErrorCallbackStruct) OnInsert() error {
+	return fmt.Errorf("insert callback error")
+}
+
+func (testErrorCallbackStruct) OnUpdate() error {
+	return fmt.Errorf("update callback error")
+}
 
 //*** test suite setup ***/
 type stormSuite struct {
@@ -34,6 +50,16 @@ func (s *stormSuite) SetUpSuite(c *C) {
 	s.db.DB().Exec("CREATE TABLE `test_all_type_structure` " +
 		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
 		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
+}
+
+//need to return a instance to it self
+func (s *stormSuite) TestStorm(c *C) {
+	c.Assert(s.db.Storm(), Equals, s.db)
+}
+
+//not realy a usefull test, but now we know ping doesnt generate a error
+func (s *stormSuite) TestPing(c *C) {
+	c.Assert(s.db.Ping(), IsNil)
 }
 
 /*** tests ***/
@@ -331,6 +357,42 @@ func TestStorm_DeleteWrongInput(t *testing.T) {
 	}
 }
 
+func TestStorm_Delete_ErrorNullPointer(t *testing.T) {
+	var (
+		input = (*testStructure)(nil)
+		s     = newTestStorm()
+	)
+
+	err := s.Delete(&input)
+	if err == nil {
+		t.Fatalf("Expected a error")
+	}
+
+	expectedError := "provided input is a nil pointer"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
+func TestStorm_Delete_ErrorOnDeleteCallback(t *testing.T) {
+
+	var (
+		input = testErrorCallbackStruct{}
+		s     = newTestStorm()
+	)
+	s.RegisterStructure((*testErrorCallbackStruct)(nil))
+
+	err := s.Delete(&input)
+	if err == nil {
+		t.Fatalf("Expected a error")
+	}
+
+	expectedError := "delete callback error"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
 func TestStorm_Save(t *testing.T) {
 
 	var (
@@ -403,6 +465,61 @@ func TestStorm_Save(t *testing.T) {
 	//check if callback OnInserted is called
 	if input.onPostInserteInvoked != true {
 		t.Errorf("OnInserted callback not invoked")
+	}
+}
+
+func TestStorm_Save_ErrorNullPointer(t *testing.T) {
+	var (
+		input = (*testStructure)(nil)
+		s     = newTestStorm()
+	)
+
+	err := s.Save(&input)
+	if err == nil {
+		t.Fatalf("Expected a error")
+	}
+
+	expectedError := "provided input is a nil pointer"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
+func TestStorm_Save_ErrorOnInsertCallback(t *testing.T) {
+
+	var (
+		input = testErrorCallbackStruct{}
+		s     = newTestStorm()
+	)
+	s.RegisterStructure((*testErrorCallbackStruct)(nil))
+
+	err := s.Save(&input)
+	if err == nil {
+		t.Fatalf("Expected a error")
+	}
+
+	expectedError := "insert callback error"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
+	}
+}
+
+func TestStorm_Save_ErrorOnUpdateCallback(t *testing.T) {
+
+	var (
+		input = testErrorCallbackStruct{Id: 5}
+		s     = newTestStorm()
+	)
+	s.RegisterStructure((*testErrorCallbackStruct)(nil))
+
+	err := s.Save(&input)
+	if err == nil {
+		t.Fatalf("Expected a error")
+	}
+
+	expectedError := "update callback error"
+	if err == nil || err.Error() != expectedError {
+		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
 	}
 }
 
@@ -654,6 +771,42 @@ func TestStorm_CreateTable(t *testing.T) {
 	}
 }
 
+func TestStorm_CreateTable_ErrorNotStructure(t *testing.T) {
+	var (
+		err error
+	)
+
+	s, _ := Open(`sqlite3`, `:memory:`)
+	err = s.CreateTable((*int)(nil))
+	if err == nil {
+		t.Fatal("Expected a error, none given")
+	}
+
+	expectedError := "provided input is not a structure type"
+	if err.Error() != expectedError {
+		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
+	}
+
+}
+
+func TestStorm_CreateTable_ErrorNotRegistered(t *testing.T) {
+	type notRegisteredStruct struct{}
+	var (
+		err error
+	)
+
+	s, _ := Open(`sqlite3`, `:memory:`)
+	err = s.CreateTable((*notRegisteredStruct)(nil))
+	if err == nil {
+		t.Fatal("Expected a error, none given")
+	}
+
+	expectedError := "no registered structure for `storm.notRegisteredStruct` found"
+	if err.Error() != expectedError {
+		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
+	}
+}
+
 func TestStorm_DropTable(t *testing.T) {
 	var (
 		err    error
@@ -685,6 +838,42 @@ func TestStorm_DropTable(t *testing.T) {
 
 	if result != 0 {
 		t.Fatalf("Table is not dropped")
+	}
+}
+
+func TestStorm_DropTable_ErrorNotStructure(t *testing.T) {
+	var (
+		err error
+	)
+
+	s, _ := Open(`sqlite3`, `:memory:`)
+	err = s.DropTable((*int)(nil))
+	if err == nil {
+		t.Fatal("Expected a error, none given")
+	}
+
+	expectedError := "provided input is not a structure type"
+	if err.Error() != expectedError {
+		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
+	}
+
+}
+
+func TestStorm_DropTable_ErrorNotRegistered(t *testing.T) {
+	type notRegisteredStruct struct{}
+	var (
+		err error
+	)
+
+	s, _ := Open(`sqlite3`, `:memory:`)
+	err = s.DropTable((*notRegisteredStruct)(nil))
+	if err == nil {
+		t.Fatal("Expected a error, none given")
+	}
+
+	expectedError := "no registered structure for `storm.notRegisteredStruct` found"
+	if err.Error() != expectedError {
+		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
 	}
 }
 

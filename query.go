@@ -406,7 +406,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	}
 
 	if ts.Elem().Kind() != reflect.Slice {
-		return errors.New("provided input pointer is not a slice type")
+		return errors.New("provided input is not a slice")
 	}
 
 	//get the element type

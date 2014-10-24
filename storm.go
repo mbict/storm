@@ -283,7 +283,7 @@ func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	v = v.Elem()
 	if v.Kind() == reflect.Ptr {
 		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
+			return errors.New("provided input is a nil pointer")
 		}
 	}
 	v = reflect.Indirect(v)
@@ -326,7 +326,7 @@ func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 	v = v.Elem()
 	if v.Kind() == reflect.Ptr {
 		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()))
+			return errors.New("provided input is a nil pointer")
 		}
 	}
 	v = reflect.Indirect(v)

@@ -230,6 +230,16 @@ func (s *querySuite) Test_Count_WhereAutoJoinReverseToParentHint(c *C) {
 	c.Assert(cnt, Equals, int64(1))
 }
 
+//creating a prepare error
+func (s *querySuite) Test_Count_PrepareSQLError(c *C) {
+	_, err := s.db.Query().
+		Where("MAX id = ?", 1).
+		Count((*Person)(nil))
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "near \"`person`\": syntax error")
+}
+
 func (s *querySuite) Test_Count_WhereAutoJoinErrorTableResolve(c *C) {
 	cnt, err := s.db.Query().
 		Where("OptionalAddress.UnknownTable.id = ?", 1).
@@ -525,6 +535,17 @@ func (s *querySuite) Test_First_WhereAutoJoinReverseToParentHint(c *C) {
 		CountryId: 4})
 }
 
+//creating a prepare error
+func (s *querySuite) Test_First_PrepareSQLError(c *C) {
+	var person *Person
+	err := s.db.Query().
+		Where("MAX id = ?", 1).
+		First(&person)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "near \"`person`\": syntax error")
+}
+
 func (s *querySuite) Test_First_WhereAutoJoinErrorTableResolve(c *C) {
 	var person *Person
 	err := s.db.Query().
@@ -672,11 +693,48 @@ func (s *querySuite) Test_Find_Single_Where_InlineStatementObject(c *C) {
 		onInitInvoked:     true})
 }
 
+//use only object for inline where no where statent used
+func (s *querySuite) Test_Find_Single_InlineStatementObject(c *C) {
+	var person *Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&person, address)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
 func (s *querySuite) Test_Find_Single_Where_InlineStatementObjectPtr(c *C) {
 	var person *Person
 	address := &Address{Id: 3}
 	err := s.db.Query().
 		Find(&person, "address.id = ?", address)
+
+	c.Assert(err, IsNil)
+	c.Assert(person, DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_InlineStatementObjectPtr(c *C) {
+	var person *Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&person, address)
 
 	c.Assert(err, IsNil)
 	c.Assert(person, DeepEquals, &Person{
@@ -753,6 +811,35 @@ func (s *querySuite) Test_Find_Single_Where_InlineAutoJoin(c *C) {
 		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
 		Telephones:        nil,
 		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Single_Inline_WhereAutoJoinErrorTableResolve(c *C) {
+	var person *Person
+	err := s.db.Query().Find(&person, "OptionalAddress.UnknownTable.id = ?", 1)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_Find_Single_Inline_WhereAutoJoinErrorColumnResolve(c *C) {
+	var person *Person
+	err := s.db.Query().Find(&person, "OptionalAddress.notexistingcolumn = ?", 1)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
+//supplying a not registered structure to auto resolve where on primary key
+func (s *querySuite) Test_Find_Single_Inline_ErrorNoRegisteredStructureFoundForPkResolve(c *C) {
+	type nonExistingStructure struct{}
+	var (
+		person     *Person
+		noExisting = nonExistingStructure{}
+	)
+	err := s.db.Query().Find(&person, noExisting)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "unsupported pk find type")
 }
 
 //simple 1 level
@@ -1149,6 +1236,100 @@ func (s *querySuite) Test_Find_Slice_Where_InlineStatementNotPersistent(c *C) {
 		onInitInvoked:     true})
 }
 
+//use object for inline where
+func (s *querySuite) Test_Find_Slice_Where_InlineStatementObject(c *C) {
+	var persons []*Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&persons, "address.id = ?", address)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+//use only object for inline where no where statent used
+func (s *querySuite) Test_Find_Slice_InlineStatementObject(c *C) {
+	var persons []*Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&persons, address)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Slice_Where_InlineStatementObjectPtr(c *C) {
+	var persons []*Person
+	address := &Address{Id: 3}
+	err := s.db.Query().
+		Find(&persons, "address.id = ?", address)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Slice_InlineStatementObjectPtr(c *C) {
+	var persons []*Person
+	address := Address{Id: 3}
+	err := s.db.Query().
+		Find(&persons, address)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 1)
+	c.Assert(persons[0], DeepEquals, &Person{
+		Id:                2,
+		Name:              "person 2",
+		Address:           nil,
+		AddressId:         3,
+		OptionalAddress:   nil,
+		OptionalAddressId: sql.NullInt64{Int64: 4, Valid: true},
+		Telephones:        nil,
+		onInitInvoked:     true})
+}
+
+func (s *querySuite) Test_Find_Slice_Inline_WhereAutoJoinErrorTableResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().Find(&persons, "OptionalAddress.UnknownTable.id = ?", 1)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
+}
+
+func (s *querySuite) Test_Find_Slice_Inline_WhereAutoJoinErrorColumnResolve(c *C) {
+	var persons []*Person
+	err := s.db.Query().Find(&persons, "OptionalAddress.notexistingcolumn = ?", 1)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
+}
+
 //simple 1 level
 func (s *querySuite) Test_Find_Slice_WhereAutoJoin(c *C) {
 	var persons []*Person
@@ -1176,6 +1357,19 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoin(c *C) {
 		OptionalAddressId: sql.NullInt64{Int64: 2, Valid: true},
 		Telephones:        nil,
 		onInitInvoked:     true})
+}
+
+//supplying a not registered structure to auto resolve where on primary key
+func (s *querySuite) Test_Find_Slice_Inline_ErrorNoRegisteredStructureFoundForPkResolve(c *C) {
+	type nonExistingStructure struct{}
+	var (
+		persons    []*Person
+		noExisting = nonExistingStructure{}
+	)
+	err := s.db.Query().Find(&persons, noExisting)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "unsupported pk find type")
 }
 
 //join 2 levels deep
@@ -1408,6 +1602,17 @@ func (s *querySuite) Test_Find_Slice_WhereAutoJoinErrorTableResolve(c *C) {
 	c.Assert(err, ErrorMatches, "Cannot resolve table `UnknownTable` in statement `OptionalAddress.UnknownTable.id`")
 }
 
+//creating a prepare error
+func (s *querySuite) Test_Find_Slice_PrepareSQLError(c *C) {
+	var persons []*Person
+	err := s.db.Query().
+		Where("MAX id = ?", 1).
+		Find(&persons)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "near \"`person`\": syntax error")
+}
+
 func (s *querySuite) Test_Find_Slice_WhereAutoJoinErrorColumnResolve(c *C) {
 	var persons []*Person
 	err := s.db.Query().
@@ -1424,6 +1629,15 @@ func (s *querySuite) Test_Find_Slice_ErrorSliceHasNoStructureType(c *C) {
 
 	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "provided input slice has no structure type")
+}
+
+func (s *querySuite) Test_Find_Slice_ErrorInputNotASlice(c *C) {
+	//cannot access this fetchAll trough Find (we need to check it directly)
+	var notaslice int
+	err := s.db.Query().fetchAll(&notaslice)
+
+	c.Assert(err, NotNil)
+	c.Assert(err, ErrorMatches, "provided input is not a slice")
 }
 
 func (s *querySuite) Test_Find_Slice_ErrorNotRegistred(c *C) {
