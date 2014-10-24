@@ -578,7 +578,10 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 	//assert row equals
 	assertEqualField(1, result.Id, "Id mismatches %d != %d")
 	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
-	assertEqualField(input.Time, result.Time, "Time mismatches %s != %s")
+
+	if !input.Time.Equal(result.Time) {
+		t.Errorf("Time mismatches %v != %v", input.Time, result.Time)
+	}
 	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
 		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
 	}
@@ -654,7 +657,9 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 	//assert row equals
 	assertEqualField(3, result.Id, "Id mismatches %d != %d")
 	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
-	assertEqualField(input.Time, result.Time, "Time mismatches %s != %s")
+	if !input.Time.Equal(result.Time) {
+		t.Errorf("Time mismatches %v != %v", input.Time, result.Time)
+	}
 	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
 		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
 	}
