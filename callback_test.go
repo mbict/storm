@@ -60,7 +60,10 @@ func (s *callbackSuite) TestRegisterCallback(c *C) {
 }
 
 func (s *callbackSuite) TestInvoke(c *C) {
-	db := newTestStorm()
+	db, err := Open(`sqlite3`, `:memory:`)
+	c.Assert(db, NotNil)
+	c.Assert(err, IsNil)
+
 	st := &testCallbackStructure{ctx: db}
 	v := reflect.ValueOf(st)
 	cb := make(callback)

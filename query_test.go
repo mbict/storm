@@ -7,53 +7,6 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type Person struct {
-	Id                int
-	Name              string
-	Address           *Address
-	AddressId         int
-	OptionalAddress   *Address
-	OptionalAddressId sql.NullInt64
-	Telephones        []*Telephone
-
-	//test invoke params
-	onInsertInvoked      bool
-	onPostInserteInvoked bool
-	onUpdateInvoked      bool
-	onPostUpdateInvoked  bool
-	onDeleteInvoked      bool
-	onPostDeleteInvoked  bool
-	onInitInvoked        bool
-}
-
-//all posibile callbacks
-func (person *Person) OnInsert()     { person.onInsertInvoked = true }
-func (person *Person) OnPostInsert() { person.onPostInserteInvoked = true }
-func (person *Person) OnUpdate()     { person.onUpdateInvoked = true }
-func (person *Person) OnPostUpdate() { person.onPostUpdateInvoked = true }
-func (person *Person) OnDelete()     { person.onDeleteInvoked = true }
-func (person *Person) OnPostDelete() { person.onPostDeleteInvoked = true }
-func (person *Person) OnInit()       { person.onInitInvoked = true }
-
-type Address struct {
-	Id        int
-	Line1     string
-	Line2     string
-	Country   *Country
-	CountryId int
-}
-
-type Country struct {
-	Id   int
-	Name string
-}
-
-type Telephone struct {
-	Id       int
-	PersonId int
-	Number   int
-}
-
 type querySuite struct {
 	db *Storm
 }

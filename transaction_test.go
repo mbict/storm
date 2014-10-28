@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
-	"testing"
 
 	. "gopkg.in/check.v1"
 )
@@ -114,209 +113,93 @@ func (s *transactionSuite) TestOffset(c *C) {
 	c.Assert(s.tx.Offset(123).offset, Equals, 123)
 }
 
-func TestTransaction_Save(t *testing.T) {
+func (s *transactionSuite) TestSave_Insert(c *C) {
+	insert := &Person{Name: "first"}
+	var compare *Person
 
-	var (
-		err   error
-		input *testStructure
-		s     = newTestStormFile()
-		res   *sql.Row
-		tx1   = s.Begin()
-	)
+	c.Assert(s.tx.Save(&insert), IsNil)
+	c.Assert(s.tx.Find(&compare, insert.Id), IsNil)
+	c.Assert(compare.Name, Equals, insert.Name)
 
-	//update a existing entity
-	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, '2nd')")
-
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	input = &testStructure{Id: 1, Name: `test updated`}
-	if err = tx1.Save(input); err != nil {
-		t.Fatalf("Failed save (update) with error `%v`", err.Error())
-	}
-
-	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if input.Name != "test updated" {
-		t.Fatalf("Entity data not updated")
-	}
-
-	//check if not modified in other connection (non transactional)
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if input.Name != "name" {
-		t.Fatalf("Entity not only in transaction changed")
-	}
-
-	//insert a new entity
-	input = &testStructure{Id: 0, Name: "test insert"}
-	if err = tx1.Save(input); err != nil {
-		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
-	}
-
-	if input.Id == 0 {
-		t.Fatalf("Entity pk id not set")
-	}
-
-	if input.Id != 3 {
-		t.Fatalf("Expected to get entity PK 3 but got %v", input.Id)
-	}
-
-	//query for entity
-	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 3, Name: "test insert"}); err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	res = s.Begin().DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		t.Fatalf("Expected to get no rows back but got %v", err)
-	}
-
-	//check if not modified in other connection (non transactional)
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		t.Fatalf("Expected to get no rows back but got error %v or a record back", err)
-	}
-
-	//cleanup
-	tx1.tx.Rollback()
+	//should not be found
+	c.Assert(s.db.Find(&compare, insert.Id), Equals, sql.ErrNoRows)
 }
 
-func TestTransaction_Find_Single(t *testing.T) {
-	var (
-		err   error
-		input *testStructure
-		s     = newTestStormFile()
-		tx1   = s.Begin()
-	)
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
-	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3nd')")
+func (s *transactionSuite) TestSave_Update(c *C) {
+	first := &Person{Name: "first"}
 
-	//find by id (transaction)
-	input = nil
-	if err = tx1.Find(&input, 1); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	c.Assert(s.db.Save(&first), IsNil)
+	c.Assert(s.db.Save(&Person{Name: "2nd"}), IsNil)
 
-	//find by id
-	input = nil
-	if err = tx1.Find(&input, 2); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	updated := &Person{Id: first.Id, Name: `test updated`}
+	c.Assert(s.tx.Save(&updated), IsNil)
 
-	//find by id (transaction)
-	input = nil
-	if err = s.Find(&input, 2); err != sql.ErrNoRows {
-		t.Fatalf("Expected to get no results back but got error `%v`", err)
-	}
+	var compare *Person
 
-	//cleanup
-	tx1.tx.Rollback()
+	//current transaction new value
+	c.Assert(s.tx.Find(&compare, first.Id), IsNil)
+	c.Assert(compare.Name, Equals, updated.Name)
+
+	//should be old value
+	c.Assert(s.db.Find(&compare, first.Id), IsNil)
+	c.Assert(compare.Name, Equals, first.Name)
 }
 
-func TestTransaction_Find_Slice(t *testing.T) {
-	var (
-		err   error
-		input []*testStructure
-		s     = newTestStormFile()
-		tx1   = s.Begin()
-	)
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
-	tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (3, 'name 3nd')")
+//simple test for the passtrough transaction
+func (s *transactionSuite) TestQuery(c *C) {
+	var compare *Person
+	row1 := &Person{Name: "first"}
+	row2 := &Person{Name: "2nd"}
 
-	//find by id (transaction)
-	input = nil
-	if err = tx1.Find(&input, 1); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	c.Assert(s.db.Save(&row1), IsNil)
+	c.Assert(s.tx.Save(&row2), IsNil)
 
-	if len(input) != 1 {
-		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
-	}
+	q := s.tx.Query()
 
-	//find by id
-	input = nil
-	if err = tx1.Find(&input, 2); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if len(input) != 1 {
-		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
-	}
-
-	//get all (transaction)
-	input = nil
-	if err = tx1.Find(&input); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if len(input) != 3 {
-		t.Fatalf("Expected to get %d record back but got %d", 3, len(input))
-	}
-
-	//find by id (transaction)
-	input = nil
-	if err = s.Find(&input, 2); err != sql.ErrNoRows {
-		t.Fatalf("Expected to get no results back but got error `%v`", err)
-	}
-
-	//get all
-	input = nil
-	if err = s.Find(&input); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if len(input) != 1 {
-		t.Fatalf("Expected to get %d record back but got %d", 1, len(input))
-	}
-
-	//cleanup
-	tx1.tx.Rollback()
+	c.Assert(q.Find(&compare, row1.Id), IsNil)
+	c.Assert(q.Find(&compare, row2.Id), IsNil)
 }
 
-func TestTransaction_Delete(t *testing.T) {
-	var (
-		err   error
-		input = &testStructure{Id: 2, Name: "name delete"}
-		s     = newTestStormFile()
-		tx1   = s.Begin()
-		res   *sql.Row
-	)
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name delete')")
+//simple test for the passtrough transaction
+func (s *transactionSuite) TestFind(c *C) {
+	var compare *Person
+	row1 := &Person{Name: "first"}
+	row2 := &Person{Name: "2nd"}
 
-	//normal
-	if err = tx1.Delete(input); err != nil {
-		t.Fatalf("Failed delete with error `%v`", err.Error())
-	}
+	c.Assert(s.db.Save(&row1), IsNil)
+	c.Assert(s.tx.Save(&row2), IsNil)
 
-	res = tx1.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 2)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		if err == nil {
-			t.Fatalf("Record not deleted")
-		}
-		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
-	}
+	c.Assert(s.tx.Find(&compare, row1.Id), IsNil)
+	c.Assert(s.tx.Find(&compare, row2.Id), IsNil)
 
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 2)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row but got error %v", err)
-	}
+	c.Assert(s.db.Find(&compare, row1.Id), IsNil)
+	c.Assert(s.db.Find(&compare, row2.Id), Equals, sql.ErrNoRows)
+}
+
+func (s *transactionSuite) TestFind_Slice(c *C) {
+
+	var compare []*Person
+	row1 := &Person{Name: "first"}
+	row2 := &Person{Name: "2nd"}
+
+	c.Assert(s.db.Save(&row1), IsNil)
+	c.Assert(s.tx.Save(&row2), IsNil)
+
+	c.Assert(s.tx.Find(&compare), IsNil)
+	c.Assert(compare, HasLen, 2)
+
+	c.Assert(s.db.Find(&compare), IsNil)
+	c.Assert(compare, HasLen, 1)
+}
+
+func (s *transactionSuite) TestDelete(c *C) {
+	insert := &Person{Name: "first"}
+	var stub *Person
+	c.Assert(s.db.Save(&insert), IsNil)
+	c.Assert(s.tx.Find(&stub, insert.Id), IsNil) //find in transaction
+	c.Assert(s.tx.Delete(insert), IsNil)
+	c.Assert(s.tx.Find(&stub, insert.Id), Equals, sql.ErrNoRows) //find in transaction
+	c.Assert(s.db.Find(&stub, insert.Id), IsNil)                 //main
 }
 
 func (s *transactionSuite) TestCommit(c *C) {

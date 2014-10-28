@@ -4,9 +4,6 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
-	"fmt"
-	"io/ioutil"
-	"log"
 	"strconv"
 	"testing"
 	"time"
@@ -46,16 +43,9 @@ func (tct testCustomType) Value() (driver.Value, error) {
 	return int64(tct), nil
 }
 
-type testRelatedStructure struct {
-	Id              int
-	TestStructureId int
-	Name            string
-}
-
 type testStructure struct {
 	Id   int
 	Name string
-	//TestSlice []testRelatedStructure
 
 	//test invoke params
 	onInsertInvoked      bool
@@ -97,64 +87,49 @@ type testAllTypeStructure struct {
 	PtrBool        *bool
 }
 
-func newTestStorm() *Storm {
-	s, err := Open(`sqlite3`, `:memory:`)
-	if err != nil {
-		panic(err)
-	}
+type Person struct {
+	Id                int
+	Name              string
+	Address           *Address
+	AddressId         int
+	OptionalAddress   *Address
+	OptionalAddressId sql.NullInt64
+	Telephones        []*Telephone
 
-	s.Log(log.New(ioutil.Discard, "", 0))
-	s.RegisterStructure((*testStructure)(nil))
-	s.RegisterStructure((*testRelatedStructure)(nil))
-	s.RegisterStructure((*testAllTypeStructure)(nil))
-	s.db.Exec("DROP TABLE `test_structure`")
-	s.db.Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
-	s.db.Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
-	s.db.Exec("DROP TABLE `test_all_type_structure`")
-	s.db.Exec("CREATE TABLE `test_all_type_structure` " +
-		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
-		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
-	s.db.SetMaxIdleConns(10)
-	s.db.SetMaxOpenConns(10)
-
-	return s
+	//test invoke params
+	onInsertInvoked      bool
+	onPostInserteInvoked bool
+	onUpdateInvoked      bool
+	onPostUpdateInvoked  bool
+	onDeleteInvoked      bool
+	onPostDeleteInvoked  bool
+	onInitInvoked        bool
 }
 
-func newTestStormFile() *Storm {
+//all posibile callbacks
+func (person *Person) OnInsert()     { person.onInsertInvoked = true }
+func (person *Person) OnPostInsert() { person.onPostInserteInvoked = true }
+func (person *Person) OnUpdate()     { person.onUpdateInvoked = true }
+func (person *Person) OnPostUpdate() { person.onPostUpdateInvoked = true }
+func (person *Person) OnDelete()     { person.onDeleteInvoked = true }
+func (person *Person) OnPostDelete() { person.onPostDeleteInvoked = true }
+func (person *Person) OnInit()       { person.onInitInvoked = true }
 
-	//create unique temporary datastore
-	tmp, err := ioutil.TempFile("", "storm_test.sqlite_")
-	if err != nil {
-		panic(err)
-	}
-	tmp.Close()
-
-	s, _ := Open(`sqlite3`, `file:`+tmp.Name()+`?mode=rwc`)
-	s.Log(log.New(ioutil.Discard, "", 0))
-	s.RegisterStructure((*testStructure)(nil))
-	s.RegisterStructure((*testRelatedStructure)(nil))
-	s.RegisterStructure((*testAllTypeStructure)(nil))
-	s.db.Exec("DROP TABLE `test_structure`")
-	s.db.Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
-	s.db.Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
-	s.db.Exec("DROP TABLE `test_all_type+structure`")
-	s.db.Exec("CREATE TABLE `test_all_type_structure` " +
-		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
-		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
-	s.db.SetMaxIdleConns(10)
-	s.db.SetMaxOpenConns(10)
-
-	return s
+type Address struct {
+	Id        int
+	Line1     string
+	Line2     string
+	Country   *Country
+	CountryId int
 }
 
-func assertEntity(actual *testStructure, expected *testStructure) error {
-	if actual == nil {
-		return errors.New(`nil record returned`)
-	}
+type Country struct {
+	Id   int
+	Name string
+}
 
-	if actual.Id != expected.Id || actual.Name != expected.Name {
-		return fmt.Errorf("data mismatch expected `%v` but got `%v`", expected, actual)
-	}
-
-	return nil
+type Telephone struct {
+	Id       int
+	PersonId int
+	Number   int
 }
