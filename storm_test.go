@@ -1,11 +1,9 @@
 package storm
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
 	"reflect"
-	"testing"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -33,28 +31,35 @@ type stormSuite struct {
 
 var _ = Suite(&stormSuite{})
 
-func (s *stormSuite) SetUpSuite(c *C) {
+func (s *stormSuite) SetUpTest(c *C) {
 
 	var err error
 	s.db, err = Open(`sqlite3`, `:memory:`)
 	c.Assert(s.db, NotNil)
 	c.Assert(err, IsNil)
 
-	s.db.RegisterStructure((*testStructure)(nil))
-	s.db.RegisterStructure((*testAllTypeStructure)(nil))
 	s.db.SetMaxIdleConns(10)
 	s.db.SetMaxOpenConns(10)
-
-	s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
-	s.db.DB().Exec("CREATE TABLE `test_related_structure` (`id` INTEGER PRIMARY KEY, test_structure_id INTEGER, `name` TEXT)")
-	s.db.DB().Exec("CREATE TABLE `test_all_type_structure` " +
-		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
-		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL)")
 }
+
+/*** tests ***/
 
 //need to return a instance to it self
 func (s *stormSuite) TestStorm(c *C) {
 	c.Assert(s.db.Storm(), Equals, s.db)
+}
+
+func (s *stormSuite) TestClose(c *C) {
+	//we dont close the connetion for the test, we create a new one
+	db, err := Open(`sqlite3`, `:memory:`)
+
+	c.Assert(err, IsNil)
+	c.Assert(db, NotNil)
+	c.Assert(db.Close(), IsNil)
+
+	//check by running sql query to force error
+	_, err = db.DB().Exec("SELECT * FROM DUAL")
+	c.Assert(err, ErrorMatches, "sql: database is closed")
 }
 
 //not realy a usefull test, but now we know ping doesnt generate a error
@@ -62,578 +67,305 @@ func (s *stormSuite) TestPing(c *C) {
 	c.Assert(s.db.Ping(), IsNil)
 }
 
-/*** tests ***/
-func (s *stormSuite) TestRegisterStructure(c *C) {
+func (s *stormSuite) TestRegisterStructure_Object(c *C) {
+	person := Person{}
+	c.Assert(s.db.RegisterStructure(person), IsNil)
+
+	tbl, ok := s.db.tables[reflect.TypeOf(Person{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
 }
 
-func TestStorm_RegisterStructure(t *testing.T) {
-
-	var (
-		s          *Storm
-		err        error
-		typeStruct = reflect.TypeOf(testAllTypeStructure{})
-		tbl        *table
-		ok         bool
-	)
-
-	//register by casted nil type
-	s, _ = Open(`sqlite3`, `:memory:`)
-	err = s.RegisterStructure((*testAllTypeStructure)(nil))
-	if err != nil {
-		t.Fatalf("Failed with error : %v", err)
-	}
-
-	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
-		t.Fatalf("added table information not found")
-	}
-
-	//register by element
-	s, _ = Open(`sqlite3`, `:memory:`)
-	structure := testAllTypeStructure{}
-	err = s.RegisterStructure(structure)
-	if err != nil {
-		t.Fatalf("Failed with error : %v", err)
-	}
-
-	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
-		t.Fatalf("added table information not found")
-	}
-
-	//register by nil element
-	s, _ = Open(`sqlite3`, `:memory:`)
-	structurePtr := &testAllTypeStructure{}
-	err = s.RegisterStructure(structurePtr)
-	if err != nil {
-		t.Fatalf("Failed with error : %v", err)
-	}
-
-	if tbl, ok = s.tables[typeStruct]; !ok || tbl == nil {
-		t.Fatalf("added table information not found")
-	}
+func (s *stormSuite) TestRegisterStructure_ObjectPtr(c *C) {
+	person := &Person{}
+	c.Assert(s.db.RegisterStructure(person), IsNil)
+	tbl, ok := s.db.tables[reflect.TypeOf(Person{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
 }
 
-func (s *stormSuite) TestRegisterStructureWrongInput(c *C) {
+func (s *stormSuite) TestRegisterStructure_NilType(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	tbl, ok := s.db.tables[reflect.TypeOf(Person{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
+}
+
+func (s *stormSuite) TestRegisterStructure_ErrorNotAStructure(c *C) {
 	c.Assert(s.db.RegisterStructure((*int)(nil)), ErrorMatches, `provided input is not a structure type`)
 	c.Assert(s.db.RegisterStructure(string("test")), ErrorMatches, `provided input is not a structure type`)
-	c.Assert(s.db.RegisterStructure((*TestProduct)(nil)), IsNil)
-	c.Assert(s.db.RegisterStructure((*TestProduct)(nil)), ErrorMatches, `duplicate structure, 'storm.TestProduct' already exists`)
 }
 
-func TestStorm_RegisterStructureResolveRelations_OneToMany(t *testing.T) {
-
-	var (
-		s          *Storm
-		typeStruct = reflect.TypeOf(testStructure{})
-	)
-
-	s, _ = Open(`sqlite3`, `:memory:`)
-	if nil != s.RegisterStructure((*testStructure)(nil)) ||
-		nil != s.RegisterStructure((*testRelatedStructure)(nil)) {
-		t.Fatalf("Failed adding test structures")
-	}
-
-	tbl, _ := s.tables[typeStruct]
-	if len(tbl.relations) != 1 {
-		t.Fatalf("Expected to get 1 relational field but got `%d`", len(tbl.relations))
-	}
-
-	rel := tbl.relations[0]
-	if nil == rel.relColumn || nil == rel.relTable {
-		t.Fatalf("Relational table information missing, no relation found")
-	}
-
-	if rel.relTable.tableName != "test_related_structure" {
-		t.Fatalf("Wrong table found expected %s but got %s", "test_related_structure", rel.relTable.tableName)
-	}
-
-	if rel.relColumn.columnName != "test_structure_id" {
-		t.Fatalf("Wrong column name found expected %s but got %s", "test_structure_id", rel.relColumn.columnName)
-	}
-
+func (s *stormSuite) TestRegisterStructure_ErrorDuplicateRegister(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), ErrorMatches, `duplicate structure, 'storm.Person' already exists`)
 }
 
-func TestStorm_Find_Single(t *testing.T) {
-	var (
-		err   error
-		input *testStructure
-		s     = newTestStorm()
-	)
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'name 2nd')")
+func (s *stormSuite) TestRegisterStructure_ResolveRelations(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	c.Assert(s.db.RegisterStructure((*Address)(nil)), IsNil)
+	c.Assert(s.db.RegisterStructure((*Telephone)(nil)), IsNil)
 
-	//empty result, no match
-	if err = s.Find(&input, 999); err != sql.ErrNoRows {
-		t.Fatalf("Got wrong error back, expected `%v` but got `%v`", sql.ErrNoRows, err)
-	}
+	tbl, ok := s.db.tables[reflect.TypeOf(Person{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
 
-	//find first result
-	input = nil
-	if err = s.Find(&input); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	tblTelephone, ok := s.db.tables[reflect.TypeOf(Telephone{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tblTelephone, NotNil)
 
-	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
+	tblAddress, ok := s.db.tables[reflect.TypeOf(Address{})]
+	c.Assert(ok, Equals, true)
+	c.Assert(tblAddress, NotNil)
 
-	//find by id
-	input = nil
-	if err = s.Find(&input, 2); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	//3 relations
+	c.Assert(tbl.relations, HasLen, 3)
 
-	if err = assertEntity(input, &testStructure{Id: 2, Name: "name 2nd"}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
+	//one to one (person.address -> address)
+	c.Assert(tbl.relations[0].goIndex, DeepEquals, []int{2})
+	c.Assert(tbl.relations[0].goSingularType, Equals, reflect.TypeOf((*Address)(nil)))
+	c.Assert(tbl.relations[0].goType, Equals, reflect.TypeOf((*Address)(nil)))
+	c.Assert(tbl.relations[0].name, Equals, "address")
+	c.Assert(tbl.relations[0].relColumn, Equals, tbl.columns[2])
+	c.Assert(tbl.relations[0].relTable, IsNil)
 
-	//find by string
-	input = nil
-	if err = s.Find(&input, `id = 1`); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
+	//one to one (person.optional_address -> address)
+	c.Assert(tbl.relations[1].goIndex, DeepEquals, []int{4})
+	c.Assert(tbl.relations[1].goSingularType, Equals, reflect.TypeOf((*Address)(nil)))
+	c.Assert(tbl.relations[1].goType, Equals, reflect.TypeOf((*Address)(nil)))
+	c.Assert(tbl.relations[1].name, Equals, "optional_address")
+	c.Assert(tbl.relations[1].relColumn, Equals, tbl.columns[3])
+	c.Assert(tbl.relations[1].relTable, IsNil)
 
-	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
-
-	//find by query bind string (shorthand for query)
-	input = nil
-	if err = s.Find(&input, `id = ?`, 1); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
-
-	//find by multiple bind string (shorthand for query)
-	input = nil
-	if err = s.Find(&input, `id = ? AND name = ?`, 1, `name`); err != nil {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
-
-	//check if callback OnInit is called
-	if input.onInitInvoked != true {
-		t.Errorf("OnInit function not invoked")
-	}
-
-	//BUG: make sure if we recycle a pointer its initialized to zero
-	if err = s.Find(&input, `id = ?`, 999); err != sql.ErrNoRows {
-		t.Fatalf("Failed getting by id with error `%v`", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 0, Name: ""}); err != nil {
-		t.Fatalf("Error: %v", err)
-	}
+	//one to many (person.telephones -> telephone)
+	c.Assert(tbl.relations[2].goIndex, DeepEquals, []int{6})
+	c.Assert(tbl.relations[2].goSingularType, Equals, reflect.TypeOf((*Telephone)(nil)).Elem())
+	c.Assert(tbl.relations[2].goType, Equals, reflect.TypeOf(([]*Telephone)(nil)))
+	c.Assert(tbl.relations[2].name, Equals, "telephones")
+	c.Assert(tbl.relations[2].relColumn, Equals, tblTelephone.columns[1])
+	c.Assert(tbl.relations[2].relTable, Equals, tblTelephone)
 }
 
-func TestStorm_FindWrongInput(t *testing.T) {
-
+//test alias (full test is done in query)
+func (s *stormSuite) TestFind(c *C) {
+	type testStruct struct{ Id int }
 	var (
-		err           error
-		expectedError string
+		single *testStruct
+		slice  []*testStruct
 	)
-	s := newTestStorm()
-
-	//not a pointer
-	var input testStructure
-	if err = s.Find(input, 1); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not by reference`
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
-
-	//not a structure pointer
-	var inputIntPtr *int
-	if err = s.Find(inputIntPtr, 1); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not a structure type`
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
-
-	//not registered structure
-	type testNonRegisteredStruct struct{}
-	if err = s.Find(&testNonRegisteredStruct{}, 1); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
+	c.Assert(s.db.RegisterStructure((*testStruct)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `test_struct` (`id` INTEGER PRIMARY KEY)")
+	c.Assert(err, IsNil)
+	c.Assert(s.db.Find(&single, "id = ?", 1), Equals, sql.ErrNoRows)
+	c.Assert(s.db.Find(&slice, "id > ?", 1), Equals, sql.ErrNoRows)
 }
 
-func TestStorm_Delete(t *testing.T) {
-	var (
-		err   error
-		input = testStructure{Id: 1, Name: "name"}
-		s     = newTestStormFile()
-		res   *sql.Row
-	)
+func (s *stormSuite) TestDelete(c *C) {
+	c.Assert(s.db.RegisterStructure((*testStructure)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	c.Assert(err, IsNil)
+	_, err = s.db.DB().Exec("INSERT INTO `test_structure` (`id`) VALUES (2)")
+	c.Assert(err, IsNil)
 
-	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	if err = s.Delete(&input); err != nil {
-		t.Fatalf("Failed delete with error `%v`", err.Error())
-	}
+	input := testStructure{Id: 2}
+	c.Assert(s.db.Delete(&input), IsNil)
 
 	//check if callback beforeDelete is called
-	if input.onDeleteInvoked != true {
-		t.Errorf("OnDelete callback not invoked")
-	}
+	c.Assert(input.onDeleteInvoked, Equals, true)
 
 	//check if callback AfterDelete is called
-	if input.onPostDeleteInvoked != true {
-		t.Errorf("OnDeleted callback not invoked")
-	}
+	c.Assert(input.onPostDeleteInvoked, Equals, true)
 
-	res = s.DB().QueryRow("SELECT * FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		if err == nil {
-			t.Fatalf("Record not deleted")
-		}
-		t.Fatalf("Expected to get a ErrNoRows but got %v", err)
-	}
+	//check if record is deleted
+	c.Assert(s.db.Find(&input, "id = ?", 2), Equals, sql.ErrNoRows)
 }
 
-func TestStorm_DeleteWrongInput(t *testing.T) {
-
-	var err error
-	var expectedError string
-	s := newTestStorm()
-
-	//not a structure
-	var inputInt int
-	if err = s.Delete(inputInt); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not by reference`
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-
-	if err = s.Delete(&inputInt); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-	expectedError = `provided input is not a structure type`
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-
-	//not a structure pointer
-	var inputIntPtr *int
-	if err = s.Delete(inputIntPtr); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not a structure type`
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-
-	//not registered structure
-	type testNonRegisteredStruct struct{}
-	if err = s.Delete(&testNonRegisteredStruct{}); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
+func (s *stormSuite) TestDelete_ErrorNotByReference(c *C) {
+	c.Assert(s.db.Delete(Person{}), ErrorMatches, "provided input is not by reference")
 }
 
-func TestStorm_Delete_ErrorNullPointer(t *testing.T) {
-	var (
-		input = (*testStructure)(nil)
-		s     = newTestStorm()
-	)
-
-	err := s.Delete(&input)
-	if err == nil {
-		t.Fatalf("Expected a error")
-	}
-
-	expectedError := "provided input is a nil pointer"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
+func (s *stormSuite) TestDelete_ErrorNotRegistered(c *C) {
+	type notRegisteredStruct struct{}
+	c.Assert(s.db.Delete(&notRegisteredStruct{}), ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
 }
 
-func TestStorm_Delete_ErrorOnDeleteCallback(t *testing.T) {
-
-	var (
-		input = testErrorCallbackStruct{}
-		s     = newTestStorm()
-	)
-	s.RegisterStructure((*testErrorCallbackStruct)(nil))
-
-	err := s.Delete(&input)
-	if err == nil {
-		t.Fatalf("Expected a error")
-	}
-
-	expectedError := "delete callback error"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
+func (s *stormSuite) TestDelete_ErrorNotAStructure(c *C) {
+	var notStruct int = 1
+	c.Assert(s.db.Delete(&notStruct), ErrorMatches, "provided input is not a structure type")
+	var notStructPtr *int = new(int)
+	*notStructPtr = 1
+	c.Assert(s.db.Delete(&notStructPtr), ErrorMatches, "provided input is not a structure type")
 }
 
-func TestStorm_Save(t *testing.T) {
+func (s *stormSuite) TestDelete_ErrorNullPointer(c *C) {
+	input := (*Person)(nil)
+	c.Assert(s.db.Delete(&input), ErrorMatches, "provided input is a nil pointer")
+}
 
-	var (
-		err   error
-		input *testStructure
-		s     = newTestStormFile()
-		res   *sql.Row
-	)
+//force a sql error (not table exists)
+func (s *stormSuite) TestDelete_ErrorSqlError(c *C) {
+	input := Person{Id: 1}
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	c.Assert(s.db.Delete(&input), ErrorMatches, "no such table: person")
+}
 
-	//update a existing entity
-	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	_, err = s.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, '2nd')")
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
+func (s *stormSuite) TestDelete_ErrorOnDeleteCallback(c *C) {
+	input := testErrorCallbackStruct{}
+	c.Assert(s.db.RegisterStructure((*testErrorCallbackStruct)(nil)), IsNil)
+	c.Assert(s.db.Delete(&input), ErrorMatches, "delete callback error")
+}
 
-	input = &testStructure{Id: 1, Name: "test updated"}
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (update) with error `%v`", err.Error())
-	}
+func (s *stormSuite) TestSave_Insert(c *C) {
+	c.Assert(s.db.RegisterStructure((*testStructure)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	c.Assert(err, IsNil)
+	_, err = s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'first')")
+	c.Assert(err, IsNil)
+	_, err = s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'wow 2nd')")
+	c.Assert(err, IsNil)
 
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if input.Name != "test updated" {
-		t.Fatalf("Entity data not updated")
-	}
-
-	//check if callback OnUpdate is called
-	if input.onUpdateInvoked != true {
-		t.Errorf("OnUpdate callback not invoked")
-	}
-
-	//check if callback OnUpdated is called
-	if input.onPostUpdateInvoked != true {
-		t.Errorf("OnUpdated callback not invoked")
-	}
-
-	//insert a new entity
-	input = &testStructure{Id: 0, Name: "test inserted"}
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
-	}
-
-	if input.Id == 0 {
-		t.Fatalf("Entity pk id not set")
-	}
-
-	if input.Id != 3 {
-		t.Fatalf("Expected to get entity PK 3 but got %v", input.Id)
-	}
-
-	//query for entity
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 3)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 3, Name: "test inserted"}); err != nil {
-		t.Fatalf(err.Error())
-	}
+	input := &testStructure{Id: 0, Name: "test inserted"}
+	c.Assert(s.db.Save(&input), IsNil)
+	c.Assert(input.Id, Equals, 3) // check pk
 
 	//check if callback OnInsert is called
-	if input.onInsertInvoked != true {
-		t.Errorf("OnInsert callback not invoked")
-	}
+	c.Assert(input.onInsertInvoked, Equals, true)
 
 	//check if callback OnInserted is called
-	if input.onPostInserteInvoked != true {
-		t.Errorf("OnInserted callback not invoked")
-	}
+	c.Assert(input.onPostInserteInvoked, Equals, true)
+
+	//check if all the fields are correctly saved
+	input = nil
+	c.Assert(s.db.Find(&input, "id = ?", 3), IsNil)
+	c.Assert(input.Id, Equals, 3)
+	c.Assert(input.Name, Equals, "test inserted")
 }
 
-func TestStorm_Save_ErrorNullPointer(t *testing.T) {
-	var (
-		input = (*testStructure)(nil)
-		s     = newTestStorm()
-	)
+func (s *stormSuite) TestSave_Update(c *C) {
+	c.Assert(s.db.RegisterStructure((*testStructure)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `test_structure` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	c.Assert(err, IsNil)
+	_, err = s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'first')")
+	c.Assert(err, IsNil)
+	_, err = s.db.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (2, 'wow 2nd')")
+	c.Assert(err, IsNil)
 
-	err := s.Save(&input)
-	if err == nil {
-		t.Fatalf("Expected a error")
-	}
+	input := &testStructure{Id: 2, Name: "updated 2nd"}
+	c.Assert(s.db.Save(&input), IsNil)
 
-	expectedError := "provided input is a nil pointer"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
+	//check if callback OnInsert is called
+	c.Assert(input.onUpdateInvoked, Equals, true)
+
+	//check if callback OnInserted is called
+	c.Assert(input.onPostUpdateInvoked, Equals, true)
+
+	//check if all the fields are correctly saved
+	input = nil
+	c.Assert(s.db.Find(&input, "id = ?", 2), IsNil)
+	c.Assert(input.Id, Equals, 2)
+	c.Assert(input.Name, Equals, "updated 2nd")
 }
 
-func TestStorm_Save_ErrorOnInsertCallback(t *testing.T) {
+func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
+	c.Assert(s.db.RegisterStructure((*testAllTypeStructure)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `test_all_type_structure` (" +
+		"`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
+		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,`null_float` REAL,`null_bool` BOOL," +
+		"`ptr_string` TEXT,`ptr_int` INTEGER,`ptr_int64` BIGINT,`ptr_float` REAL,`ptr_bool` BOOL)")
+	c.Assert(err, IsNil)
 
-	var (
-		input = testErrorCallbackStruct{}
-		s     = newTestStorm()
-	)
-	s.RegisterStructure((*testErrorCallbackStruct)(nil))
-
-	err := s.Save(&input)
-	if err == nil {
-		t.Fatalf("Expected a error")
+	var compare *testAllTypeStructure
+	input := &testAllTypeStructure{
+		Id:             0,
+		TestCustomType: 3,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test 1",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{String: "", Valid: false},
+		NullInt:        sql.NullInt64{Int64: 0, Valid: false},
+		NullFloat:      sql.NullFloat64{Float64: 0, Valid: false},
+		NullBool:       sql.NullBool{Bool: false, Valid: false},
+		PtrString:      nil,
+		PtrInt:         nil,
+		PtrInt64:       nil,
+		PtrFloat:       nil,
+		PtrBool:        nil,
 	}
+	c.Assert(s.db.Save(&input), IsNil)
+	c.Assert(input.Id, Equals, 1)
+	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+	c.Assert(compare, DeepEquals, input)
 
-	expectedError := "insert callback error"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-}
-
-func TestStorm_Save_ErrorOnUpdateCallback(t *testing.T) {
-
-	var (
-		input = testErrorCallbackStruct{Id: 5}
-		s     = newTestStorm()
-	)
-	s.RegisterStructure((*testErrorCallbackStruct)(nil))
-
-	err := s.Save(&input)
-	if err == nil {
-		t.Fatalf("Expected a error")
-	}
-
-	expectedError := "update callback error"
-	if err == nil || err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err)
-	}
-}
-
-func TestStorm_SaveFindAllTypes(t *testing.T) {
-
-	var (
-		err    error
-		input  *testAllTypeStructure
-		result *testAllTypeStructure
-		s      = newTestStormFile()
-	)
-
-	assertEqualField := func(v1, v2 interface{}, message string) {
-		if v1 != v2 {
-			t.Errorf(message, v1, v2)
-		}
-	}
-
-	//update a existing entity
-	if _, err = s.DB().Exec("INSERT INTO `test_all_type_structure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
-		"(1, 5, '2010-12-31 23:59:59 +0000 UTC', '1234567890ABCDEFG', 'stringvalue', 99, 999, 99.1234, 'TRUE', 'null_String_value', 99, 99.1234, 'TRUE')"); err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	if _, err = s.DB().Exec("INSERT INTO `test_all_type_structure` (`id`,`test_custom_type`,`time`,`byte`,`string`,`int`,`int64`,`float64`,`bool`,`null_string`,`null_int`,`null_float`,`null_bool`) VALUES " +
-		"(2, 6, NULL, 'GFEDCBA0987654321', '2nd string value', 199, 1999, 199.1234, 'FALSE', NULL, NULL, NULL, NULL)"); err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
+	str := string("")
+	i := int(0)
+	i64 := int64(0)
+	f := float64(0)
+	b := bool(false)
+	//overwrite (null values with)
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
 		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
-		String:         "test update",
+		String:         "test 1",
 		Int:            1234,
 		Int64:          5678,
 		Float64:        1234.56,
 		Bool:           false,
-		NullString:     sql.NullString{String: "", Valid: false},
-		NullInt:        sql.NullInt64{Int64: 0, Valid: false},
-		NullFloat:      sql.NullFloat64{Float64: 0, Valid: false},
-		NullBool:       sql.NullBool{Bool: false, Valid: false},
+		NullString:     sql.NullString{String: "", Valid: true},
+		NullInt:        sql.NullInt64{Int64: 0, Valid: true},
+		NullFloat:      sql.NullFloat64{Float64: 0, Valid: true},
+		NullBool:       sql.NullBool{Bool: false, Valid: true},
+		PtrString:      &str,
+		PtrInt:         &i,
+		PtrInt64:       &i64,
+		PtrFloat:       &f,
+		PtrBool:        &b,
 	}
+	c.Assert(s.db.Save(&input), IsNil)
+	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+	c.Assert(compare, DeepEquals, input)
 
-	//save item
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (update) with error `%v`", err.Error())
-	}
-
-	//fetch item we just uupdated and compare if the items are set as expected
-	if err = s.Find(&result, 1); err != nil {
-		t.Fatalf("Unable to find modified record `%v`", err.Error())
-	}
-
-	//assert row equals
-	assertEqualField(1, result.Id, "Id mismatches %d != %d")
-	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
-
-	if !input.Time.Equal(result.Time) {
-		t.Errorf("Time mismatches %v != %v", input.Time, result.Time)
-	}
-	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
-		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
-	}
-	assertEqualField("test update", result.String, "String mismatches %s != %s")
-	assertEqualField(int(1234), result.Int, "Int mismatches %d != %d")
-	assertEqualField(int64(5678), result.Int64, "Int64 mismatches %d != %d")
-	assertEqualField(float64(1234.56), result.Float64, "Float64 mismatches %f != %f")
-	assertEqualField(input.Bool, result.Bool, "Bool mismatches %c != %c")
-	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
-	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
-	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
-	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
-
-	//save with null values (only check the null value rows)
+	str = string("string")
+	i = int(0)
+	i64 = int64(0)
+	f = float64(0)
+	b = bool(false)
 	input = &testAllTypeStructure{
-		Id:             2,
-		TestCustomType: 4,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
-		Byte:           []byte("1234567890"),
-		String:         "test update",
-		Int:            1234,
-		Int64:          5678,
-		Float64:        1234.56,
-		Bool:           false,
-		NullString:     sql.NullString{String: "test1234", Valid: true},
-		NullInt:        sql.NullInt64{Int64: 234, Valid: true},
-		NullFloat:      sql.NullFloat64{Float64: 234.12, Valid: true},
-		NullBool:       sql.NullBool{Bool: true, Valid: true},
-	}
-
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (update) with error `%v`", err.Error())
-	}
-
-	if err = s.Find(&result, 2); err != nil {
-		t.Fatalf("Unable to find modified record `%v`", err.Error())
-	}
-
-	//assert row equals
-	assertEqualField(false, result.Bool, "Bool mismatches %c != %c")
-	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
-	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
-	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
-	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
-
-	//*** insert tests ***************************************
-	input = &testAllTypeStructure{
-		Id:             0,
+		Id:             1,
 		TestCustomType: 3,
 		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
-		String:         "test update",
+		String:         "test 1",
+		Int:            1234,
+		Int64:          5678,
+		Float64:        1234.56,
+		Bool:           false,
+		NullString:     sql.NullString{String: "string", Valid: true},
+		NullInt:        sql.NullInt64{Int64: 1234, Valid: true},
+		NullFloat:      sql.NullFloat64{Float64: 1234.56, Valid: true},
+		NullBool:       sql.NullBool{Bool: true, Valid: true},
+		PtrString:      &str,
+		PtrInt:         &i,
+		PtrInt64:       &i64,
+		PtrFloat:       &f,
+		PtrBool:        &b,
+	}
+	c.Assert(s.db.Save(&input), IsNil)
+	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+	c.Assert(compare, DeepEquals, input)
+
+	//update it back to null
+	input = &testAllTypeStructure{
+		Id:             1,
+		TestCustomType: 3,
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Byte:           []byte("1234567890"),
+		String:         "test 1",
 		Int:            1234,
 		Int64:          5678,
 		Float64:        1234.56,
@@ -642,244 +374,90 @@ func TestStorm_SaveFindAllTypes(t *testing.T) {
 		NullInt:        sql.NullInt64{Int64: 0, Valid: false},
 		NullFloat:      sql.NullFloat64{Float64: 0, Valid: false},
 		NullBool:       sql.NullBool{Bool: false, Valid: false},
+		PtrString:      nil,
+		PtrInt:         nil,
+		PtrInt64:       nil,
+		PtrFloat:       nil,
+		PtrBool:        nil,
 	}
-
-	//save item
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
-	}
-
-	//fetch item we just uupdated and compare if the items are set as expected
-	if err = s.Find(&result, 3); err != nil {
-		t.Fatalf("Unable to find inserted record `%v`", err.Error())
-	}
-
-	//assert row equals
-	assertEqualField(3, result.Id, "Id mismatches %d != %d")
-	assertEqualField(testCustomType(3), result.TestCustomType, "TestCustomType mismatches %d != %d")
-	if !input.Time.Equal(result.Time) {
-		t.Errorf("Time mismatches %v != %v", input.Time, result.Time)
-	}
-	if bytes.Equal([]byte("1234567890"), result.Byte) != true {
-		t.Errorf("Byte mismatches %v != %v", input.Byte, result.Byte)
-	}
-	assertEqualField("test update", result.String, "String mismatches %s != %s")
-	assertEqualField(1234, result.Int, "Int mismatches %d != %d")
-	assertEqualField(int64(5678), result.Int64, "Int64 mismatches %d != %d")
-	assertEqualField(1234.56, result.Float64, "Float64 mismatches %f != %f")
-	assertEqualField(input.Bool, result.Bool, "Bool mismatches %c != %c")
-	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
-	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
-	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
-	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
-
-	//save with null values (only check the null value rows)
-	input = &testAllTypeStructure{
-		Id:             0,
-		TestCustomType: 4,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
-		Byte:           []byte("1234567890"),
-		String:         "test update",
-		Int:            1234,
-		Int64:          5678,
-		Float64:        1234.56,
-		Bool:           false,
-		NullString:     sql.NullString{String: "test1234", Valid: true},
-		NullInt:        sql.NullInt64{Int64: 234, Valid: true},
-		NullFloat:      sql.NullFloat64{Float64: 234.12, Valid: true},
-		NullBool:       sql.NullBool{Bool: true, Valid: true},
-	}
-
-	if err = s.Save(input); err != nil {
-		t.Fatalf("Failed save (insert) with error `%v`", err.Error())
-	}
-
-	if err = s.Find(&result, 4); err != nil {
-		t.Fatalf("Unable to find inserted record `%v`", err.Error())
-	}
-
-	//assert row equals
-	assertEqualField(4, result.Id, "Id mismatches %d != %d")
-	assertEqualField(false, result.Bool, "Bool mismatches %c != %c")
-	assertEqualField(input.NullString, result.NullString, "NullString mismatches %v != %v")
-	assertEqualField(input.NullInt, result.NullInt, "NullInt mismatches %v != %v")
-	assertEqualField(input.NullFloat, result.NullFloat, "NullFloat mismatches %v != %v")
-	assertEqualField(input.NullBool, result.NullBool, "NullBool mismatches %v != %v")
-
+	c.Assert(s.db.Save(&input), IsNil)
+	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+	c.Assert(compare, DeepEquals, input)
 }
 
-func TestStorm_SaveWrongInput(t *testing.T) {
-
-	var err error
-	var expectedError string
-	s := newTestStorm()
-
-	//not a pointer
-	var input testStructure
-	if err = s.Save(input); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not by reference`
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
-
-	//not a structure pointer
-	var inputIntPtr *int
-	if err = s.Save(inputIntPtr); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = `provided input is not a structure type`
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
-
-	//not registered structure
-	type testNonRegisteredStruct struct{}
-	if err = s.Save(&testNonRegisteredStruct{}); err == nil {
-		t.Fatalf("Expected a error but got none")
-	}
-
-	expectedError = "no registered structure for `storm.testNonRegisteredStruct` found"
-	if err.Error() != expectedError {
-		t.Fatalf("Expected error `%v`, but got `%v`", expectedError, err.Error())
-	}
+func (s *stormSuite) TestSave_ErrorNotByReference(c *C) {
+	c.Assert(s.db.Save(Person{}), ErrorMatches, "provided input is not by reference")
 }
 
-func TestStorm_CreateTable(t *testing.T) {
-	var (
-		err    error
-		result int
-	)
-
-	s, _ := Open(`sqlite3`, `:memory:`)
-	s.RegisterStructure((*testStructure)(nil))
-
-	if result != 0 {
-		t.Fatalf("Table does exists, cannot create")
-	}
-
-	err = s.CreateTable((*testStructure)(nil))
-	if err != nil {
-		t.Fatalf("Failure creating new table `%v`", err)
-	}
-
-	result, err = assertTableExist("test_structure", s.DB())
-	if err != nil {
-		t.Fatalf("Error while determing if new table exists `%v`", err)
-	}
-
-	if result != 1 {
-		t.Fatalf("Table not created")
-	}
-}
-
-func TestStorm_CreateTable_ErrorNotStructure(t *testing.T) {
-	var (
-		err error
-	)
-
-	s, _ := Open(`sqlite3`, `:memory:`)
-	err = s.CreateTable((*int)(nil))
-	if err == nil {
-		t.Fatal("Expected a error, none given")
-	}
-
-	expectedError := "provided input is not a structure type"
-	if err.Error() != expectedError {
-		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
-	}
-
-}
-
-func TestStorm_CreateTable_ErrorNotRegistered(t *testing.T) {
+func (s *stormSuite) TestSave_ErrorNotRegistered(c *C) {
 	type notRegisteredStruct struct{}
-	var (
-		err error
-	)
-
-	s, _ := Open(`sqlite3`, `:memory:`)
-	err = s.CreateTable((*notRegisteredStruct)(nil))
-	if err == nil {
-		t.Fatal("Expected a error, none given")
-	}
-
-	expectedError := "no registered structure for `storm.notRegisteredStruct` found"
-	if err.Error() != expectedError {
-		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
-	}
+	c.Assert(s.db.Save(&notRegisteredStruct{}), ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
 }
 
-func TestStorm_DropTable(t *testing.T) {
-	var (
-		err    error
-		result int
-		s      = newTestStorm()
-	)
-
-	//check if table does exists
-	result, err = assertTableExist("test_structure", s.DB())
-	if err != nil {
-		t.Fatalf("Error while determing if table exists `%v`", err)
-	}
-
-	if result != 1 {
-		t.Fatal("Table does not exist, nothing to drop")
-	}
-
-	//drop the table
-	err = s.DropTable((*testStructure)(nil))
-	if err != nil {
-		t.Fatalf("Failure creating new table `%v`", err)
-	}
-
-	//check if table does not exists
-	result, err = assertTableExist("test_structure", s.DB())
-	if err != nil {
-		t.Fatalf("Error while determing if table is dropped `%v`", err)
-	}
-
-	if result != 0 {
-		t.Fatalf("Table is not dropped")
-	}
+func (s *stormSuite) TestSave_ErrorNotAStructure(c *C) {
+	var notStruct int = 1
+	c.Assert(s.db.Save(&notStruct), ErrorMatches, "provided input is not a structure type")
+	var notStructPtr *int = new(int)
+	*notStructPtr = 1
+	c.Assert(s.db.Save(&notStructPtr), ErrorMatches, "provided input is not a structure type")
 }
 
-func TestStorm_DropTable_ErrorNotStructure(t *testing.T) {
-	var (
-		err error
-	)
-
-	s, _ := Open(`sqlite3`, `:memory:`)
-	err = s.DropTable((*int)(nil))
-	if err == nil {
-		t.Fatal("Expected a error, none given")
-	}
-
-	expectedError := "provided input is not a structure type"
-	if err.Error() != expectedError {
-		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
-	}
-
+func (s *stormSuite) TestSave_ErrorNullPointer(c *C) {
+	person := (*Person)(nil)
+	c.Assert(s.db.Save(&person), ErrorMatches, "provided input is a nil pointer")
 }
 
-func TestStorm_DropTable_ErrorNotRegistered(t *testing.T) {
+func (s *stormSuite) TestSave_ErrorOnInsertCallback(c *C) {
+	input := testErrorCallbackStruct{Id: 0}
+	c.Assert(s.db.RegisterStructure((*testErrorCallbackStruct)(nil)), IsNil)
+	c.Assert(s.db.Save(&input), ErrorMatches, "insert callback error")
+}
+
+func (s *stormSuite) TestSave_ErrorOnUpdateCallback(c *C) {
+	input := testErrorCallbackStruct{Id: 5}
+	c.Assert(s.db.RegisterStructure((*testErrorCallbackStruct)(nil)), IsNil)
+	c.Assert(s.db.Save(&input), ErrorMatches, "update callback error")
+}
+
+//force sql error, table not found
+func (s *stormSuite) TestSave_ErrorSqlError(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	c.Assert(s.db.Save(&Person{Id: 5}), ErrorMatches, "no such table: person")
+	c.Assert(s.db.Save(&Person{}), ErrorMatches, "no such table: person")
+}
+
+func (s *stormSuite) TestCreateTable(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	c.Assert(s.db.CreateTable((*Person)(nil)), IsNil)
+	c.Assert(s.db.CreateTable((*Person)(nil)), ErrorMatches, "table `person` already exists")
+}
+
+func (s *stormSuite) TestCreateTable_ErrorNotAStructure(c *C) {
+	c.Assert(s.db.CreateTable(int(1)), ErrorMatches, "provided input is not a structure type")
+	c.Assert(s.db.CreateTable(string("test")), ErrorMatches, "provided input is not a structure type")
+	c.Assert(s.db.CreateTable((*int)(nil)), ErrorMatches, "provided input is not a structure type")
+}
+
+func (s *stormSuite) TestCreateTable_ErrorNotRegistered(c *C) {
 	type notRegisteredStruct struct{}
-	var (
-		err error
-	)
+	c.Assert(s.db.CreateTable((*notRegisteredStruct)(nil)), ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
+}
 
-	s, _ := Open(`sqlite3`, `:memory:`)
-	err = s.DropTable((*notRegisteredStruct)(nil))
-	if err == nil {
-		t.Fatal("Expected a error, none given")
-	}
+func (s *stormSuite) TestDropTable(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	_, err := s.db.DB().Exec("CREATE TABLE `person` (`id` INTEGER PRIMARY KEY, `name` TEXT)")
+	c.Assert(err, IsNil)
+	c.Assert(s.db.DropTable((*Person)(nil)), IsNil)
+	c.Assert(s.db.DropTable((*Person)(nil)), ErrorMatches, "no such table: person")
+}
 
-	expectedError := "no registered structure for `storm.notRegisteredStruct` found"
-	if err.Error() != expectedError {
-		t.Fatalf("Error expected `%s` but got `%s`", expectedError, err)
-	}
+func (s *stormSuite) TestDropTable_ErrorNotAStructure(c *C) {
+	c.Assert(s.db.DropTable((*int)(nil)), ErrorMatches, "provided input is not a structure type")
+}
+
+func (s *stormSuite) TestDropTable_ErrorNotRegistered(c *C) {
+	type notRegisteredStruct struct{}
+	c.Assert(s.db.DropTable((*notRegisteredStruct)(nil)), ErrorMatches, "no registered structure for `storm.notRegisteredStruct` found")
 }
 
 func (s *stormSuite) TestWhere(c *C) {
@@ -916,61 +494,111 @@ func (s *stormSuite) TestBegin(c *C) {
 // SQL helpers
 //--------------------------------------
 func (s *stormSuite) TestGenerateDeleteSql(c *C) {
-	entity := testStructure{Id: 1, Name: "test"}
-	tbl, _ := s.db.table(reflect.TypeOf(entity))
-	v := reflect.ValueOf(entity)
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	person := Person{Id: 1, Name: "test"}
+	tbl, ok := s.db.table(reflect.TypeOf(person))
+	c.Assert(tbl, NotNil)
+	c.Assert(ok, Equals, true)
+
+	v := reflect.ValueOf(person)
 	sqlQuery, bind := s.db.generateDeleteSQL(v, tbl)
 
 	c.Assert(bind, HasLen, 1)
 	c.Assert(bind[0], Equals, 1)
-	c.Assert(sqlQuery, Equals, "DELETE FROM `test_structure` WHERE `id` = ?")
+	c.Assert(sqlQuery, Equals, "DELETE FROM `person` WHERE `id` = ?")
 }
 
 func (s *stormSuite) TestGenerateInsertSQL(c *C) {
-	entity := testStructure{Id: 0, Name: "test"}
-	tbl, _ := s.db.table(reflect.TypeOf(entity))
-	v := reflect.ValueOf(entity)
-	sqlQuery, bind := s.db.generateInsertSQL(v, tbl)
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	person := Person{Id: 0, Name: "test", AddressId: 2}
+	tbl, ok := s.db.table(reflect.TypeOf(person))
+	c.Assert(tbl, NotNil)
+	c.Assert(ok, Equals, true)
 
-	c.Assert(bind, HasLen, 1)
+	v := reflect.ValueOf(person)
+	sqlQuery, bind := s.db.generateInsertSQL(v, tbl)
+	c.Assert(bind, HasLen, 3)
 	c.Assert(bind[0], Equals, "test")
-	c.Assert(sqlQuery, Equals, "INSERT INTO `test_structure` (`name`) VALUES (?)")
+	c.Assert(bind[1], Equals, 2)
+	c.Assert(bind[2], Equals, sql.NullInt64{})
+	c.Assert(sqlQuery, Equals, "INSERT INTO `person` (`name`, `address_id`, `optional_address_id`) VALUES (?, ?, ?)")
 }
 
 func (s *stormSuite) TestGenerateUpdateSQL(c *C) {
-	entity := testStructure{Id: 2, Name: "test"}
-	tbl, _ := s.db.table(reflect.TypeOf(entity))
-	v := reflect.ValueOf(entity)
-	sqlQuery, bind := s.db.generateUpdateSQL(v, tbl)
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	person := Person{Id: 3, Name: "test", AddressId: 2}
+	tbl, ok := s.db.table(reflect.TypeOf(person))
+	c.Assert(tbl, NotNil)
+	c.Assert(ok, Equals, true)
 
-	c.Assert(bind, HasLen, 2)
+	v := reflect.ValueOf(person)
+	sqlQuery, bind := s.db.generateUpdateSQL(v, tbl)
+	c.Assert(bind, HasLen, 4)
 	c.Assert(bind[0], Equals, "test")
 	c.Assert(bind[1], Equals, 2)
-	c.Assert(sqlQuery, Equals, "UPDATE `test_structure` SET `name` = ? WHERE `id` = ?")
+	c.Assert(bind[2], Equals, sql.NullInt64{})
+	c.Assert(bind[3], Equals, 3)
+	c.Assert(sqlQuery, Equals, "UPDATE `person` SET `name` = ?, `address_id` = ?, `optional_address_id` = ? WHERE `id` = ?")
 }
 
 func (s *stormSuite) TestGenerateCreateTableSQL(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
-	c.Assert(s.db.generateCreateTableSQL(tbl), Equals, "CREATE TABLE `test_all_type_structure` "+
-		"(`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT,"+
-		"`float64` REAL,`bool` BOOL,`null_string` TEXT,`null_int` BIGINT,"+
-		"`null_float` REAL,`null_bool` BOOL)")
+	c.Assert(s.db.RegisterStructure((*testAllTypeStructure)(nil)), IsNil)
+	tbl, ok := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
+
+	c.Assert(s.db.generateCreateTableSQL(tbl), Equals, "CREATE TABLE `test_all_type_structure` ("+
+		"`id` INTEGER PRIMARY KEY,"+
+		"`test_custom_type` INTEGER,"+
+		"`time` DATETIME,"+
+		"`byte` BLOB,"+
+		"`string` TEXT,"+
+		"`int` INTEGER,"+
+		"`int64` BIGINT,"+
+		"`float64` REAL,"+
+		"`bool` BOOL,"+
+		"`null_string` TEXT,"+
+		"`null_int` BIGINT,"+
+		"`null_float` REAL,"+
+		"`null_bool` BOOL,"+
+		"`ptr_string` TEXT,"+
+		"`ptr_int` INTEGER,"+
+		"`ptr_int64` BIGINT,"+
+		"`ptr_float` REAL,"+
+		"`ptr_bool` BOOL"+
+		")")
 }
 
 func (s *stormSuite) TestGenerateDropTableSQL(c *C) {
-	tbl, _ := s.db.table(reflect.TypeOf((*testAllTypeStructure)(nil)).Elem())
-	c.Assert(s.db.generateDropTableSQL(tbl), Equals, "DROP TABLE `test_all_type_structure`")
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	tbl, ok := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	c.Assert(ok, Equals, true)
+	c.Assert(s.db.generateDropTableSQL(tbl), Equals, "DROP TABLE `person`")
+}
+
+func (s *stormSuite) TestTable(c *C) {
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+
+	tbl, ok := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
+	c.Assert(tbl.tableName, Equals, "person")
+
+	type notRegisteredStruct struct{}
+	_, ok = s.db.table(reflect.TypeOf((*notRegisteredStruct)(nil)).Elem())
+	c.Assert(ok, Equals, false)
 }
 
 func (s *stormSuite) TestTableByName(c *C) {
-	epectedTbl, ok := s.db.table(reflect.TypeOf((*testStructure)(nil)).Elem())
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+	epectedTbl, ok := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
 	c.Assert(ok, Equals, true)
 
-	tbl, ok := s.db.tableByName("test_structure")
+	tbl, ok := s.db.tableByName("person")
 	c.Assert(ok, Equals, true)
 	c.Assert(tbl, Equals, epectedTbl)
 
-	tbl, ok = s.db.tableByName("testStructureNoExistie")
+	tbl, ok = s.db.tableByName("tableNoExistie")
 	c.Assert(ok, Equals, false)
 	c.Assert(tbl, IsNil)
 }

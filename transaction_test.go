@@ -2,112 +2,116 @@ package storm
 
 import (
 	"database/sql"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
+
+	. "gopkg.in/check.v1"
 )
 
+//*** test suite setup ***/
+type transactionSuite struct {
+	db       *Storm
+	tx       *Transaction
+	tempName string
+}
+
+var _ = Suite(&transactionSuite{})
+
+func (s *transactionSuite) SetUpSuite(c *C) {
+	//create temporary table (for transactions we need a physical database, sql lite doesnt support memory transactions)
+	tmp, err := ioutil.TempFile("", "storm_test.sqlite_")
+	c.Assert(err, IsNil)
+	tmp.Close()
+	s.tempName = tmp.Name()
+
+	s.db, err = Open(`sqlite3`, `file:`+s.tempName+`?mode=rwc`)
+	c.Assert(s.db, NotNil)
+	c.Assert(err, IsNil)
+
+	c.Assert(s.db.RegisterStructure((*Person)(nil)), IsNil)
+
+	s.db.SetMaxIdleConns(10)
+	s.db.SetMaxOpenConns(10)
+}
+
+func (s *transactionSuite) SetUpTest(c *C) {
+	s.db.DB().Exec("DROP TABLE `person`")
+	_, err := s.db.DB().Exec("CREATE TABLE `person` (`id` INTEGER PRIMARY KEY, `name` TEXT, `address_id` INTEGER, `optional_address_id` INTEGER)")
+	c.Assert(err, IsNil)
+
+	//c.Assert(err, IsNil)
+	s.tx = s.db.Begin()
+}
+
+func (s *transactionSuite) TearDownTest(c *C) {
+	s.tx.Rollback()
+}
+
+func (s *transactionSuite) TearDownSuite(c *C) {
+	s.db.Close()
+
+	//remove database
+	os.Remove(s.tempName)
+}
+
+/*** tests ***/
+
 //test if we get the storm instance back
-func TestTransaction_Storm(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-	)
-
-	if tx.Storm() != s {
-		t.Fatalf("Expected to get the same isntance back")
-	}
+func (s *transactionSuite) TestStorm(c *C) {
+	c.Assert(s.tx.Storm(), Equals, s.db)
 }
 
-func TestTransaction_tableByName(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-	)
+func (s *transactionSuite) TestTable(c *C) {
+	tbl, ok := s.tx.table(reflect.TypeOf((*Person)(nil)).Elem())
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, NotNil)
+	c.Assert(tbl.tableName, Equals, "person")
 
-	tbl, ok := tx.tableByName("test_structure")
-	if !ok {
-		t.Fatalf("Expected to get a table back")
-	}
-
-	if tbl != s.tables[reflect.TypeOf((*testStructure)(nil)).Elem()] {
-		t.Fatalf("Wrong instance table returned")
-	}
+	type notRegisteredStruct struct{}
+	_, ok = s.tx.table(reflect.TypeOf((*notRegisteredStruct)(nil)).Elem())
+	c.Assert(ok, Equals, false)
 }
 
-func TestTransaction_table(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-	)
+func (s *transactionSuite) TestTableByName(c *C) {
+	expectedTbl, ok := s.tx.table(reflect.TypeOf((*Person)(nil)).Elem())
+	c.Assert(ok, Equals, true)
 
-	tbl, ok := tx.table(reflect.TypeOf((*testStructure)(nil)).Elem())
-	if !ok {
-		t.Fatalf("Expected to get a table back")
-	}
+	tbl, ok := s.tx.tableByName("person")
+	c.Assert(ok, Equals, true)
+	c.Assert(tbl, Equals, expectedTbl)
 
-	if tbl != s.tables[reflect.TypeOf((*testStructure)(nil)).Elem()] {
-		t.Fatalf("Wrong instance table returned")
-	}
+	tbl, ok = s.tx.tableByName("tableNoExistie")
+	c.Assert(ok, Equals, false)
+	c.Assert(tbl, IsNil)
 }
 
 //Test where passtrough
-func TestTransaction_Where(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-		q  = tx.Where("id = ?", 1)
-	)
-
-	if q.where[0].Statement != "id = ?" {
-		t.Fatalf("Where statement differs in query")
-	}
-
-	if len(q.where[0].Bindings) != 1 && q.where[0].Bindings[0].(int) != 1 {
-		t.Fatalf("Expected where statement value")
-	}
+func (s *transactionSuite) TestWhere(c *C) {
+	q := s.tx.Where("id = ?", 1)
+	c.Assert(q.where, HasLen, 1)
+	c.Assert(q.where[0].Statement, Equals, "id = ?")
+	c.Assert(q.where[0].Bindings, HasLen, 1)
+	c.Assert(q.where[0].Bindings[0].(int), Equals, int(1))
 }
 
 //Test order passtrough
-func TestTransaction_Order(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-		q  = tx.Order("test", ASC)
-	)
-
-	if q.order[0].Statement != "test" {
-		t.Fatalf("Order statement differs in query")
-	}
-
-	if q.order[0].Direction != ASC {
-		t.Fatalf("Expected order statement value")
-	}
+func (s *transactionSuite) TestOrder(c *C) {
+	q := s.tx.Order("test", ASC)
+	c.Assert(q.order, HasLen, 1)
+	c.Assert(q.order[0].Statement, Equals, "test")
+	c.Assert(q.order[0].Direction, Equals, ASC)
 }
 
 //Test limit passtrough
-func TestTransaction_Limit(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-		q  = tx.Limit(123)
-	)
-
-	if q.limit != 123 {
-		t.Fatalf("Expected limit value of 123 but got %d", q.limit)
-	}
+func (s *transactionSuite) TestLimit(c *C) {
+	c.Assert(s.tx.Limit(123).limit, Equals, 123)
 }
 
 //Test offset passtrough
-func TestTransaction_Offset(t *testing.T) {
-	var (
-		s  = newTestStorm()
-		tx = s.Begin()
-		q  = tx.Offset(123)
-	)
-
-	if q.offset != 123 {
-		t.Fatalf("Expected offset value of 123 but got %d", q.offset)
-	}
+func (s *transactionSuite) TestOffset(c *C) {
+	c.Assert(s.tx.Offset(123).offset, Equals, 123)
 }
 
 func TestTransaction_Save(t *testing.T) {
@@ -315,60 +319,22 @@ func TestTransaction_Delete(t *testing.T) {
 	}
 }
 
-func TestTransaction_Commit(t *testing.T) {
-
-	var (
-		err   error
-		input = &testStructure{}
-		s     = newTestStormFile()
-		res   *sql.Row
-		tx1   = s.Begin()
-	)
-
-	//update a existing entity
-	_, err = tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	err = tx1.Commit()
-	if err != nil {
-		t.Fatalf("Error while commit got error `%v`", err)
-	}
-
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != nil {
-		t.Fatalf("Expected to get a row back but got error %v", err)
-	}
-
-	if err = assertEntity(input, &testStructure{Id: 1, Name: "name"}); err != nil {
-		t.Fatalf("Entity mismatch : %v", err)
-	}
+func (s *transactionSuite) TestCommit(c *C) {
+	person := &Person{Id: 0, Name: "test"}
+	personCommit := &Person{}
+	c.Assert(s.tx.Save(&person), IsNil) //insert new
+	c.Assert(s.tx.Commit(), IsNil)
+	c.Assert(s.db.Find(&personCommit, 1), IsNil)
+	c.Assert(personCommit.Id, Equals, person.Id)
+	c.Assert(personCommit.Name, Equals, person.Name)
 }
 
-func TestTransaction_Rollback(t *testing.T) {
+func (s *transactionSuite) TestRollback(c *C) {
+	person := &Person{Id: 0, Name: "test"}
+	c.Assert(s.db.Find(&person, 1), Equals, sql.ErrNoRows)
 
-	var (
-		err   error
-		input = &testStructure{}
-		s     = newTestStormFile()
-		res   *sql.Row
-		tx1   = s.Begin()
-	)
-
-	//update a existing entity
-	_, err = tx1.DB().Exec("INSERT INTO `test_structure` (`id`, `name`) VALUES (1, 'name')")
-	if err != nil {
-		t.Fatalf("Failure on saving testdate to store `%v`", err)
-	}
-
-	err = tx1.Rollback()
-	if err != nil {
-		t.Fatalf("Error while commit got error `%v`", err)
-	}
-
-	res = s.DB().QueryRow("SELECT id, name FROM `test_structure` WHERE `id` = ?", 1)
-	if err = res.Scan(&input.Id, &input.Name); err != sql.ErrNoRows {
-		t.Fatalf("Expected to get a error back no rows found but got something else %v", err)
-	}
+	c.Assert(s.tx.Save(&person), IsNil) //insert new
+	c.Assert(s.tx.Rollback(), IsNil)
+	s.db.Find(&person, 1)
+	c.Assert(s.db.Find(&person, 1), Equals, sql.ErrNoRows)
 }

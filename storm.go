@@ -83,6 +83,11 @@ func (storm *Storm) Ping() error {
 	return storm.db.Ping()
 }
 
+//close database connection
+func (storm *Storm) Close() error {
+	return storm.db.Close()
+}
+
 //Dialect returns the current dialect used by the connection
 func (storm *Storm) Dialect() dialect.Dialect {
 	return storm.dialect

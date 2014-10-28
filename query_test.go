@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"reflect"
 
-	_ "github.com/mattn/go-sqlite3"
 	. "gopkg.in/check.v1"
 )
 
@@ -255,7 +254,6 @@ func (s *querySuite) Test_Count_WhereAutoJoinErrorColumnResolve(c *C) {
 		Where("OptionalAddress.notexistingcolumn = ?", 1).
 		Count((*Person)(nil))
 
-	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
 	c.Assert(cnt, Equals, int64(0))
 }
@@ -265,7 +263,6 @@ func (s *querySuite) Test_Count_ErrorStruct(c *C) {
 		Where("OptionalAddress.notexistingcolumn = ?", 1).
 		Count((*Person)(nil))
 
-	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "Cannot find column `notexistingcolumn` found in table `address` used in statement `OptionalAddress.notexistingcolumn`")
 	c.Assert(cnt, Equals, int64(0))
 }
@@ -274,7 +271,6 @@ func (s *querySuite) Test_Count_ErrorNotRegistered(c *C) {
 	type testNotRegistered struct{}
 	_, err := s.db.Query().Count((*testNotRegistered)(nil))
 
-	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "no registered structure for `storm.testNotRegistered` found")
 }
 
@@ -282,8 +278,16 @@ func (s *querySuite) Test_Count_ErrorNotAStruct(c *C) {
 	var notastruct int
 	_, err := s.db.Query().Count(notastruct)
 
-	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "provided input is not a structure type")
+}
+
+//force sql Error no table exists
+func (s *querySuite) Test_Count_ErrorSqlError(c *C) {
+	type noTable struct{ Id int }
+	c.Assert(s.db.RegisterStructure((*noTable)(nil)), IsNil)
+
+	_, err := s.db.Query().Count((*noTable)(nil))
+	c.Assert(err, ErrorMatches, "no such table: no_table")
 }
 
 /**************************************************************************
@@ -589,6 +593,15 @@ func (s *querySuite) Test_First_ErrorNotByReference(c *C) {
 
 	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "provided input is not by reference")
+}
+
+//force sql error, no table exists
+func (s *querySuite) Test_First_ErrorSqlError(c *C) {
+	type noTable struct{ Id int }
+	c.Assert(s.db.RegisterStructure((*noTable)(nil)), IsNil)
+
+	var input noTable
+	c.Assert(s.db.Query().First(&input), ErrorMatches, "no such table: no_table")
 }
 
 /**************************************************************************
@@ -1031,6 +1044,15 @@ func (s *querySuite) Test_Find_Single_ErrorNotByReference(c *C) {
 
 	c.Assert(err, NotNil)
 	c.Assert(err, ErrorMatches, "provided input is not by reference")
+}
+
+//force sql error, no table exists
+func (s *querySuite) Test_Find_Single_ErrorSqlError(c *C) {
+	type noTable struct{ Id int }
+	c.Assert(s.db.RegisterStructure((*noTable)(nil)), IsNil)
+
+	var input noTable
+	c.Assert(s.db.Query().Find(&input), ErrorMatches, "no such table: no_table")
 }
 
 /**************************************************************************
@@ -1665,6 +1687,15 @@ func (s *querySuite) Test_Find_Slice_ErrorNotByReferencePtr(c *C) {
 	c.Assert(err, ErrorMatches, "provided input is not by reference")
 }
 
+//force sql error, no table exists
+func (s *querySuite) Test_Find_Slice_ErrorSqlError(c *C) {
+	type noTable struct{ Id int }
+	c.Assert(s.db.RegisterStructure((*noTable)(nil)), IsNil)
+
+	var inputs []noTable
+	c.Assert(s.db.Query().Find(&inputs), ErrorMatches, "no such table: no_table")
+}
+
 /**************************************************************************
  * Tests generateSelectSQL (helper)
  **************************************************************************/
@@ -2029,7 +2060,6 @@ func (s *querySuite) Test_GenerateCountSQL_WhereAutoJoinErrorColumnResolve(c *C)
  **************************************************************************/
 func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
 	personTbl, _ := s.db.tableByName("person")
-	//addressTbl, _ := s.db.tableByName("address")
 
 	//no table prefix
 	statement, joins, tables, err := s.db.Query().formatAndResolveStatement(personTbl, "id = ?")

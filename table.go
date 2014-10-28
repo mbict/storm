@@ -240,7 +240,7 @@ func isScanner(t reflect.Type) bool {
 	return isScanner
 }
 
-var timeType = reflect.TypeOf(time.Time{})
+var timeType = reflect.TypeOf((*time.Time)(nil)).Elem()
 
 func isTime(t reflect.Type) bool {
 	return t == timeType || t.AssignableTo(timeType)

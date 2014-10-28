@@ -53,9 +53,9 @@ type testRelatedStructure struct {
 }
 
 type testStructure struct {
-	Id        int
-	Name      string
-	TestSlice []testRelatedStructure
+	Id   int
+	Name string
+	//TestSlice []testRelatedStructure
 
 	//test invoke params
 	onInsertInvoked      bool
@@ -90,6 +90,11 @@ type testAllTypeStructure struct {
 	NullInt        sql.NullInt64
 	NullFloat      sql.NullFloat64
 	NullBool       sql.NullBool
+	PtrString      *string
+	PtrInt         *int
+	PtrInt64       *int64
+	PtrFloat       *float64
+	PtrBool        *bool
 }
 
 func newTestStorm() *Storm {
@@ -152,29 +157,4 @@ func assertEntity(actual *testStructure, expected *testStructure) error {
 	}
 
 	return nil
-}
-
-func assertRelatedEntity(actual *testRelatedStructure, expected *testRelatedStructure) error {
-	if actual == nil {
-		return errors.New(`nil record returned`)
-	}
-
-	if actual.Id != expected.Id || actual.TestStructureId != expected.TestStructureId || actual.Name != expected.Name {
-		return fmt.Errorf("data mismatch expected `%v` but got `%v`", expected, actual)
-	}
-
-	return nil
-}
-
-func assertTableExist(table string, db sqlCommon) (result int, err error) {
-
-	//sqlite3 way
-	res := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='` + table + `'`)
-
-	err = res.Scan(&result)
-	if err == sql.ErrNoRows {
-		err = nil
-		result = 0
-	}
-	return
 }

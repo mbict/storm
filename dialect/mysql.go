@@ -16,15 +16,15 @@ func (*mysql) InsertAutoIncrement(stmt *sql.Stmt, bind ...interface{}) (int64, e
 func (*mysql) SqlType(column interface{}, size int) string {
 
 	switch column.(type) {
-	case time.Time:
+	case time.Time, *time.Time:
 		return "DATETIME"
-	case bool, sql.NullBool:
+	case bool, sql.NullBool, *bool:
 		return "BOOLEAN"
-	case int, int8, int16, int32, uint, uint8, uint16, uint32:
+	case int, int8, int16, int32, uint, uint8, uint16, uint32, *int, *int8, *int16, *int32, *uint, *uint8, *uint16, *uint32:
 		return "INT"
-	case int64, uint64, sql.NullInt64:
+	case int64, uint64, sql.NullInt64, *int64, *uint64:
 		return "BIGINT"
-	case float32, float64, sql.NullFloat64:
+	case float32, float64, sql.NullFloat64, *float32, *float64:
 		return "DOUBLE"
 	case []byte:
 		if size > 0 && size < 65532 {
@@ -32,7 +32,7 @@ func (*mysql) SqlType(column interface{}, size int) string {
 		} else {
 			return "LONGBLOB"
 		}
-	case string, sql.NullString:
+	case string, sql.NullString, *string:
 		if size > 0 && size < 65532 {
 			return fmt.Sprintf("VARCHAR(%d)", size)
 		} else {
