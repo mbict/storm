@@ -277,7 +277,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input := &testAllTypeStructure{
 		Id:             0,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -297,6 +297,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	c.Assert(s.db.Save(&input), IsNil)
 	c.Assert(input.Id, Equals, 1)
 	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+
 	c.Assert(compare, DeepEquals, input)
 
 	str := string("")
@@ -308,7 +309,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -337,7 +338,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -356,13 +357,14 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	}
 	c.Assert(s.db.Save(&input), IsNil)
 	c.Assert(s.db.Find(&compare, "id = ?", 1), IsNil)
+
 	c.Assert(compare, DeepEquals, input)
 
 	//update it back to null
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
