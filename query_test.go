@@ -2094,25 +2094,62 @@ func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
 
 }
 
-/*
-func (s *querySuite) TestDepends(c *C) {
+func (s *querySuite) TestDependentColumns(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, _ := s.db.Query().
-		DependentColumns("OptionalAddress", "Telephones", "Address.Country").
-		generateSelectSQL2(tbl)
+	sql, _, _ := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address").
+		generateSelectSQL(tbl)
 
-	c.Assert(sql, Equals, "SELECT")
+	c.Assert(sql, Equals, "SELECT "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"FROM `person` AS `person` "+
+		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN address AS person_address ON person.address_id = person_address.id")
 }
 
-func (s *querySuite) TestDependsWhereJoin(c *C) {
+func (s *querySuite) TestDependentColumns_Where(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind := s.db.Query().
-		DependentColumns("OptionalAddress", "Telephones", "Address.Country", "OptionalAddress.Country").
-		Where("OptionalAddress.line1 = ?", 2).
-		Where("address.line1 = ?", 2).
-		generateSelectSQL2(tbl)
+	sql, _, _ := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address").
+		Where("OptionalAddress.id = ?", 123).
+		generateSelectSQL(tbl)
 
-	c.Assert(bind, HasLen, 2)
-	c.Assert(sql, Equals, "SELECT")
+	c.Assert(sql, Equals, "SELECT "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN address AS person_address ON person.address_id = person_address.id "+
+		"WHERE `person_optional_address`.`id` = ?")
 }
-*/
+
+func (s *querySuite) TestDependentColumns_LeftJoinDeep(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, _, _ := s.db.Query().
+		DependentColumns("OptionalAddress.Country", "Telephones", "Address.Country").
+		generateSelectSQL(tbl)
+
+	c.Assert(sql, Equals, "SELECT "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"FROM `person` AS `person` "+
+		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"LEFT JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"JOIN address AS person_address ON person.address_id = person_address.id "+
+		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id")
+}
+
+func (s *querySuite) TestDependentColumns_WhereDeep(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
+	sql, _, _ := s.db.Query().
+		DependentColumns("OptionalAddress.Country", "Telephones", "Address.Country").
+		Where("OptionalAddress.country.name = ?", "test").
+		generateSelectSQL(tbl)
+
+	c.Assert(sql, Equals, "SELECT "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"FROM `person` AS `person` "+
+		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
+		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
+		"JOIN address AS person_address ON person.address_id = person_address.id "+
+		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id "+
+		"WHERE `person_optional_address_country`.`name` = ?")
+}

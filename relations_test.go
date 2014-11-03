@@ -90,6 +90,7 @@ func (s *relationSuite) TestRegisterStructureResolveRelations(c *C) {
 	*/
 }
 
+/*
 func (s *relationSuite) TestDependent_Single(c *C) {
 	var product *TestProduct
 
@@ -146,6 +147,7 @@ func (s *relationSuite) TestDependentColumns(c *C) {
 	s.AssertProductTest2(productsPtr[1], c)
 	s.AssertProductTest3(productsPtr[2], c)
 }
+*/
 
 func (s *relationSuite) TestDependentColumns_WrongInput(c *C) {
 	var product *TestProduct

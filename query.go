@@ -603,6 +603,14 @@ var (
 
 func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
 
+	//helper to make indirect
+	typeIndirect := func(t reflect.Type) reflect.Type {
+		if t.Kind() == reflect.Ptr {
+			return t.Elem()
+		}
+		return t
+	}
+
 	query.joins = make(map[string]*table)
 
 	var (
@@ -625,14 +633,6 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 			colName := camelToSnake(parts[len(parts)-1])
 			targetTbl := tbl
 			alias := tbl.tableName
-
-			//helper to make indirect
-			typeIndirect := func(t reflect.Type) reflect.Type {
-				if t.Kind() == reflect.Ptr {
-					return t.Elem()
-				}
-				return t
-			}
 
 			//find table in relations
 			findRelationalTable := func(tbl *table, columnName string) (*table, *relation, bool) {
@@ -692,7 +692,7 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 						//only create join when not found
 						if _, ok := query.joins[nextAlias]; !ok {
 							query.joins[nextAlias] = joinTbl
-							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + ".id = " + nextAlias + "." + rel.name + "_id"
+							joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + ".id = " + nextAlias + "." + rel.relColumn.columnName
 
 							//joining a parent table many to one, need to add a group here
 							query.groupby = true
@@ -714,7 +714,7 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 							//normal one to one
 							if _, ok := query.joins[nextAlias]; !ok { //only create join when not found
 								query.joins[nextAlias] = joinTbl
-								joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.name + "_id = " + nextAlias + ".id"
+								joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
 							}
 						}
 						alias = nextAlias
@@ -742,6 +742,67 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 			}
 		}
 		out = append(out, in)
+	}
+
+	findRel := func(columnName string, tbl *table) *relation {
+		for _, rel := range tbl.relations {
+			if strings.EqualFold(rel.name, columnName) {
+				return rel
+			}
+		}
+		return nil
+	}
+
+	for _, dependentColumn := range query.dependentColumns {
+		var (
+			targetTbl   = tbl
+			parts       = strings.Split(dependentColumn, ".")
+			startOffset = 0
+			leftJoin    = false
+		)
+
+		if strings.EqualFold(camelToSnake(parts[0]), targetTbl.tableName) {
+			startOffset = 1
+		}
+
+		alias := tbl.tableName
+
+		for _, column := range parts[startOffset:len(parts)] {
+			relColumnName := camelToSnake(column)
+			rel := findRel(relColumnName, targetTbl)
+
+			//if no relation is found we stop searching further
+			if rel == nil {
+				break
+			}
+
+			//we only allow 1 on 1, no slices etc
+			if rel.relTable != nil {
+				break
+			}
+
+			nextAlias := alias + "_" + rel.name
+
+			//find registered tables
+			joinTbl, ok := query.ctx.table(typeIndirect(rel.goType))
+			if !ok {
+				break
+			}
+
+			//create join if not already one
+			if _, ok := query.joins[nextAlias]; !ok {
+				//we assume scanner valuer are optional and ptr types of ints
+				if leftJoin == true || rel.relColumn.isScanner == true || rel.relColumn.goType.Kind() == reflect.Ptr {
+					leftJoin = true
+					joinSQL = joinSQL + " LEFT JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
+				} else {
+					joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
+				}
+				query.joins[nextAlias] = joinTbl
+			}
+			alias = nextAlias
+			targetTbl = joinTbl
+		}
 	}
 	return out, joinSQL, joins, nil
 }
