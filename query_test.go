@@ -2015,49 +2015,42 @@ func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
 	personTbl, _ := s.db.tableByName("person")
 
 	//no table prefix
-	statement, joins, tables, err := s.db.Query().formatAndResolveStatement(personTbl, "id = ?")
+	statement, joins, err := s.db.Query().formatAndResolveStatement(personTbl, "id = ?")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "`person`.`id` = ?")
 	c.Assert(joins, Equals, "")
-	c.Assert(tables, HasLen, 0)
 
 	//hardcoded string condition, integer and float condition, glued statements, negative numbers
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "id = 'id' AND id = 123 AND id = 12.34 AND id=Id AND 1=id AND id=1 AND id = -1")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "id = 'id' AND id = 123 AND id = 12.34 AND id=Id AND 1=id AND id=1 AND id = -1")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "`person`.`id` = 'id' AND `person`.`id` = 123 AND `person`.`id` = 12.34 AND `person`.`id`=`person`.`id` AND 1=`person`.`id` AND `person`.`id`=1 AND `person`.`id` = -1")
 	c.Assert(joins, Equals, "")
-	c.Assert(tables, HasLen, 0)
 
 	//table prefix
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "Person.id = ?")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "Person.id = ?")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "`person`.`id` = ?")
 	c.Assert(joins, Equals, "")
-	c.Assert(tables, HasLen, 0)
 
 	//with auto join
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "address_id = address.id")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "address_id = address.id")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "`person`.`address_id` = `person_address`.`id`")
 	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
-	//c.Assert(tables, HasLen, 1)
-	//c.Assert(tables[0], Equals, tblRelated)
 
 	//check brackets
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "(address_id) = (address.id)")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "(address_id) = (address.id)")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "(`person`.`address_id`) = (`person_address`.`id`)")
 	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
-	//c.Assert(tables, HasLen, 1)
-	//c.Assert(tables[0], Equals, tblRelated)
 
 	//check all in backets
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "(address.id IN person.optionalAddressId)")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "(address.id IN person.optionalAddressId)")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "(`person_address`.`id` IN `person`.`optional_address_id`)")
@@ -2065,33 +2058,26 @@ func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
 	//c.Assert(tables[0], Equals, tblRelated)
 
 	//check brackets functional brackets
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "MIN(address.id) > 'id' AND MAX( person.Id ) IN (1234, 12.34, id)")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "MIN(address.id) > 'id' AND MAX( person.Id ) IN (1234, 12.34, id)")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "MIN(`person_address`.`id`) > 'id' AND MAX( `person`.`id` ) IN (1234, 12.34, `person`.`id`)")
 	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id")
-	//c.Assert(tables, HasLen, 1)
-	//c.Assert(tables[0], Equals, tbl)
 
 	//test multiple return, double join
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "address.id = 1", "address.country.id = ?")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "address.id = 1", "address.country.id = ?")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 2)
 	c.Assert(statement[0], Equals, "`person_address`.`id` = 1")
 	c.Assert(statement[1], Equals, "`person_address_country`.`id` = ?")
 	c.Assert(joins, Equals, " JOIN address AS person_address ON person.address_id = person_address.id JOIN country AS person_address_country ON person_address.country_id = person_address_country.id")
-	//c.Assert(tables, HasLen, 1)
-	//c.Assert(tables[0], Equals, tbl)
 
 	//test join on multiple
-	statement, joins, tables, err = s.db.Query().formatAndResolveStatement(personTbl, "telephones.number = '11223344'")
+	statement, joins, err = s.db.Query().formatAndResolveStatement(personTbl, "telephones.number = '11223344'")
 	c.Assert(err, IsNil)
 	c.Assert(statement, HasLen, 1)
 	c.Assert(statement[0], Equals, "`person_telephones`.`number` = '11223344'")
 	c.Assert(joins, Equals, " JOIN telephone AS person_telephones ON person.id = person_telephones.person_id")
-	//c.Assert(tables, HasLen, 1)
-	//c.Assert(tables[0], Equals, tbl)
-
 }
 
 func (s *querySuite) TestDependentColumns(c *C) {
@@ -2101,7 +2087,9 @@ func (s *querySuite) TestDependentColumns(c *C) {
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
-		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
+		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
+		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id` "+
 		"FROM `person` AS `person` "+
 		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"JOIN address AS person_address ON person.address_id = person_address.id")
@@ -2115,7 +2103,9 @@ func (s *querySuite) TestDependentColumns_Where(c *C) {
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
-		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
+		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
+		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id` "+
 		"FROM `person` AS `person` "+
 		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"JOIN address AS person_address ON person.address_id = person_address.id "+
@@ -2129,7 +2119,11 @@ func (s *querySuite) TestDependentColumns_LeftJoinDeep(c *C) {
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
-		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
+		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
+		"`person_optional_address_country`.`id`, `person_optional_address_country`.`name`, "+
+		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id`, "+
+		"`person_address_country`.`id`, `person_address_country`.`name` "+
 		"FROM `person` AS `person` "+
 		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"LEFT JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
@@ -2145,7 +2139,11 @@ func (s *querySuite) TestDependentColumns_WhereDeep(c *C) {
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
-		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id` "+
+		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
+		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
+		"`person_optional_address_country`.`id`, `person_optional_address_country`.`name`, "+
+		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id`, "+
+		"`person_address_country`.`id`, `person_address_country`.`name` "+
 		"FROM `person` AS `person` "+
 		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+

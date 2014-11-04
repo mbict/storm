@@ -506,23 +506,18 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 	//generate statements
 	where, bindVars := query.generateWhere()
 	order := query.generateOrder()
-	statements, joins, _, err := query.formatAndResolveStatement(tbl, where, order)
+	statements, joins, err := query.formatAndResolveStatement(tbl, where, order)
 	if err != nil {
 		return "", nil, err
 	}
 
+	//resolve depends and column binder
+	columnsSQL, dependsJoins := query.resolveDependsAndColumns(tbl)
+
 	//write query
-	sql := bytes.NewBufferString("SELECT ")
-	pos := 0
+
 	tblName := query.ctx.Dialect().Quote(tbl.tableName)
-	for _, col := range tbl.columns {
-		if pos > 0 {
-			sql.WriteString(", ")
-		}
-		sql.WriteString(fmt.Sprintf("%s.%s", tblName, query.ctx.Dialect().Quote(col.columnName)))
-		pos++
-	}
-	sql.WriteString(fmt.Sprintf(" FROM %s AS %s%s%s", tblName, tblName, joins, statements[0]))
+	sql := bytes.NewBufferString(fmt.Sprintf("SELECT %s FROM %s AS %s%s%s%s", columnsSQL, tblName, tblName, joins, dependsJoins, statements[0]))
 
 	if query.groupby {
 		sql.WriteString(fmt.Sprintf(" GROUP BY %s.%s", tblName, query.ctx.Dialect().Quote(tbl.aiColumn.columnName)))
@@ -543,7 +538,7 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 func (query *Query) generateCountSQL(tbl *table) (string, []interface{}, error) {
 	where, bindVars := query.generateWhere()
 	order := query.generateOrder()
-	statements, joins, _, err := query.formatAndResolveStatement(tbl, where, order)
+	statements, joins, err := query.formatAndResolveStatement(tbl, where, order)
 	if nil != err {
 		return "", nil, err
 	}
@@ -601,20 +596,9 @@ var (
 	reReservedWords = regexp.MustCompile("^(ASC|DESC|ORDER|GROUP|BY|AS|WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\-?\\d+(.\\d+)?)$")
 )
 
-func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, map[string]*table, error) {
-
-	//helper to make indirect
-	typeIndirect := func(t reflect.Type) reflect.Type {
-		if t.Kind() == reflect.Ptr {
-			return t.Elem()
-		}
-		return t
-	}
-
+func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, error) {
 	query.joins = make(map[string]*table)
-
 	var (
-		joins   = make(map[string]*table)
 		joinSQL = ""
 		out     = make([]string, 0, len(ins))
 	)
@@ -685,7 +669,7 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 						//no normal join can be resolved we do a search for a parent(reversed) join
 						joinTbl, rel, ok = findParentTable(targetTbl, tableJoinStatement)
 						if !ok {
-							return nil, "", nil, fmt.Errorf("Cannot resolve table `%s` in statement `%s`", tblToJoin, tmp)
+							return nil, "", fmt.Errorf("Cannot resolve table `%s` in statement `%s`", tblToJoin, tmp)
 						}
 						nextAlias := alias + "_" + joinTbl.tableName + "_" + rel.name
 
@@ -738,11 +722,16 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 			}
 
 			if !colFound {
-				return nil, "", nil, fmt.Errorf("Cannot find column `%s` found in table `%s` used in statement `%s`", colName, targetTbl.tableName, tmp)
+				return nil, "", fmt.Errorf("Cannot find column `%s` found in table `%s` used in statement `%s`", colName, targetTbl.tableName, tmp)
 			}
 		}
 		out = append(out, in)
 	}
+
+	return out, joinSQL, nil
+}
+
+func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joinSQL string) {
 
 	findRel := func(columnName string, tbl *table) *relation {
 		for _, rel := range tbl.relations {
@@ -752,6 +741,22 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 		}
 		return nil
 	}
+
+	genColumnSql := func(alias string, tbl *table) string {
+		sql := bytes.NewBufferString("")
+		pos := 0
+		for _, col := range tbl.columns {
+			if pos > 0 {
+				sql.WriteString(", ")
+			}
+			sql.WriteString(fmt.Sprintf("%s.%s", query.ctx.Dialect().Quote(alias), query.ctx.Dialect().Quote(col.columnName)))
+			pos++
+		}
+		return sql.String()
+	}
+
+	joinSQL = ""
+	columnsSQL = genColumnSql(tbl.tableName, tbl)
 
 	for _, dependentColumn := range query.dependentColumns {
 		var (
@@ -800,9 +805,10 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 				}
 				query.joins[nextAlias] = joinTbl
 			}
+			columnsSQL = columnsSQL + ", " + genColumnSql(nextAlias, joinTbl)
 			alias = nextAlias
 			targetTbl = joinTbl
 		}
 	}
-	return out, joinSQL, joins, nil
+	return columnsSQL, joinSQL
 }
