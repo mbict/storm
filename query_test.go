@@ -11,6 +11,12 @@ type querySuite struct {
 	db *Storm
 }
 
+type ParentPerson struct {
+	Id       int
+	Person   *Person
+	PersonId int
+}
+
 var _ = Suite(&querySuite{})
 
 func (s *querySuite) SetUpSuite(c *C) {
@@ -24,6 +30,7 @@ func (s *querySuite) SetUpSuite(c *C) {
 	s.db.RegisterStructure((*Address)(nil))
 	s.db.RegisterStructure((*Country)(nil))
 	s.db.RegisterStructure((*Telephone)(nil))
+	s.db.RegisterStructure((*ParentPerson)(nil))
 	s.db.SetMaxIdleConns(10)
 	s.db.SetMaxOpenConns(10)
 
@@ -1654,7 +1661,7 @@ func (s *querySuite) Test_Find_Slice_ErrorSqlError(c *C) {
  **************************************************************************/
 func (s *querySuite) Test_GenerateSelectSQL(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		generateSelectSQL(tbl)
 
 	c.Assert(err, IsNil)
@@ -1665,7 +1672,7 @@ func (s *querySuite) Test_GenerateSelectSQL(c *C) {
 //select, order by,where, limit and offset syntax check
 func (s *querySuite) Test_GenerateSelectSQL_Where(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Order("id", DESC).
 		Order("name", ASC).
 		Limit(123).
@@ -1683,7 +1690,7 @@ func (s *querySuite) Test_GenerateSelectSQL_Where(c *C) {
 //simple 1 level
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoin(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("optional_address.line1 = ?", 2).
 		generateSelectSQL(tbl)
 
@@ -1697,7 +1704,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoin(c *C) {
 //join 2 levels deep
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinDeep(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("OptionalAddress.Country.id = ?", 1).
 		generateSelectSQL(tbl)
 
@@ -1712,7 +1719,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinDeep(c *C) {
 //auto join trough order by
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinOrderBy(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Order("optional_address.line1", ASC).
 		generateSelectSQL(tbl)
 
@@ -1726,7 +1733,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinOrderBy(c *C) {
 //joining multiple tables (test no duplicate joins)
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinComplex(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("id = ?", 1).
 		Where("person.name = ?", "test").
 		Where("Address.Country.id = ?", 2).
@@ -1750,7 +1757,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinComplex(c *C) {
 //joining with a many to one table
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinMany(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("telephones.number = ?", 1).
 		Where("Telephones.Id IN (?,?,?)", 1, 2, 3).
 		generateSelectSQL(tbl)
@@ -1766,7 +1773,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinMany(c *C) {
 //auto join to parent record (tries to find a related structure)
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParent(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Country)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("id = ?", 1).
 		Where("country.name = ?", "test").
 		Where("Address.line1 = ?", 2).
@@ -1784,7 +1791,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParent(c *C) {
 //in this case it will only bind on Address and not on OptionalAddress
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentFirstOccurence(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("id = ?", 1).
 		Where("person.name = ?", "piet").
 		generateSelectSQL(tbl)
@@ -1800,7 +1807,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentFirstOcc
 //parent hinting support if multiple columns of the same type exists in the parent
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentHint(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Address)(nil)).Elem())
-	sql, bind, err := s.db.Query().
+	sql, bind, _, _, err := s.db.Query().
 		Where("id = ?", 1).
 		Where("person[optional_address].name = ?", "piet").
 		generateSelectSQL(tbl)
@@ -1815,7 +1822,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinReverseToParentHint(c *
 
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinErrorTableResolve(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	_, _, err := s.db.Query().
+	_, _, _, _, err := s.db.Query().
 		Where("OptionalAddress.UnknownTable.id = ?", 1).
 		generateSelectSQL(tbl)
 
@@ -1825,7 +1832,7 @@ func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinErrorTableResolve(c *C)
 
 func (s *querySuite) Test_GenerateSelectSQL_WhereAutoJoinErrorColumnResolve(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	_, _, err := s.db.Query().
+	_, _, _, _, err := s.db.Query().
 		Where("OptionalAddress.notexistingcolumn = ?", 1).
 		generateSelectSQL(tbl)
 
@@ -2080,26 +2087,33 @@ func (s *querySuite) Test_FormatAndResolveStatement(c *C) {
 	c.Assert(joins, Equals, " JOIN telephone AS person_telephones ON person.id = person_telephones.person_id")
 }
 
+//depends
+
 func (s *querySuite) TestDependentColumns(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, _, _ := s.db.Query().
+	sql, _, remainingDepends, scanObjects, _ := s.db.Query().
 		DependentColumns("OptionalAddress", "Telephones", "Address").
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
 		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
-		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
 		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id` "+
 		"FROM `person` AS `person` "+
-		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"JOIN address AS person_address ON person.address_id = person_address.id")
+
+	c.Assert(remainingDepends, HasLen, 2)
+	c.Assert(remainingDepends, DeepEquals, []depends{
+		depends{index:[][]int{[]int{4}}, dependentColumns:[]string{"OptionalAddress"}}, 
+		depends{index:[][]int{[]int{6}}, dependentColumns:[]string{"Telephones"}},
+	})
+	c.Assert(scanObjects, HasLen, 1)
 }
 
 func (s *querySuite) TestDependentColumns_Where(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, _, _ := s.db.Query().
+	sql, _, remainingDepends, scanObjects, _ := s.db.Query().
 		DependentColumns("OptionalAddress", "Telephones", "Address").
-		Where("OptionalAddress.id = ?", 123).
+		Where("OptionalAddress.id = ?", 2).
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
@@ -2110,32 +2124,41 @@ func (s *querySuite) TestDependentColumns_Where(c *C) {
 		"JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
 		"JOIN address AS person_address ON person.address_id = person_address.id "+
 		"WHERE `person_optional_address`.`id` = ?")
+
+	c.Assert(remainingDepends, HasLen, 1)
+	c.Assert(remainingDepends, DeepEquals, []depends{
+		depends{index:[][]int{[]int{6}}, dependentColumns:[]string{"Telephones"}},
+	})
+	c.Assert(scanObjects, HasLen, 2)
 }
 
-func (s *querySuite) TestDependentColumns_LeftJoinDeep(c *C) {
+func (s *querySuite) TestDependentColumns_JoinDeep(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, _, _ := s.db.Query().
-		DependentColumns("OptionalAddress.Country", "Telephones", "Address.Country").
+	sql, _, remainingDepends, scanObjects, _ := s.db.Query().
+		DependentColumns("OptionalAddress.Country", "OptionalAddress", "OptionalAddress.Test.Test" , "OptionalAddress.Country.Test", "Telephones", "Address.Country").
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
 		"`person`.`id`, `person`.`name`, `person`.`address_id`, `person`.`optional_address_id`, "+
-		"`person_optional_address`.`id`, `person_optional_address`.`line1`, `person_optional_address`.`line2`, `person_optional_address`.`country_id`, "+
-		"`person_optional_address_country`.`id`, `person_optional_address_country`.`name`, "+
 		"`person_address`.`id`, `person_address`.`line1`, `person_address`.`line2`, `person_address`.`country_id`, "+
 		"`person_address_country`.`id`, `person_address_country`.`name` "+
 		"FROM `person` AS `person` "+
-		"LEFT JOIN address AS person_optional_address ON person.optional_address_id = person_optional_address.id "+
-		"LEFT JOIN country AS person_optional_address_country ON person_optional_address.country_id = person_optional_address_country.id "+
 		"JOIN address AS person_address ON person.address_id = person_address.id "+
 		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id")
+
+	c.Assert(remainingDepends, HasLen, 2)
+	c.Assert(remainingDepends, DeepEquals, []depends{
+		depends{index:[][]int{[]int{4}}, dependentColumns:[]string{"OptionalAddress.Country", "OptionalAddress", "OptionalAddress.Test.Test", "OptionalAddress.Country.Test"}}, 
+		depends{index:[][]int{[]int{6}}, dependentColumns:[]string{"Telephones"}},
+	})
+	c.Assert(scanObjects, HasLen, 2)
 }
 
 func (s *querySuite) TestDependentColumns_WhereDeep(c *C) {
 	tbl, _ := s.db.table(reflect.TypeOf((*Person)(nil)).Elem())
-	sql, _, _ := s.db.Query().
+	sql, _, remainingDepends, scanObjects, _ := s.db.Query().
 		DependentColumns("OptionalAddress.Country", "Telephones", "Address.Country").
-		Where("OptionalAddress.country.name = ?", "test").
+		Where("OptionalAddress.country.name = ?", "nl").
 		generateSelectSQL(tbl)
 
 	c.Assert(sql, Equals, "SELECT "+
@@ -2150,4 +2173,182 @@ func (s *querySuite) TestDependentColumns_WhereDeep(c *C) {
 		"JOIN address AS person_address ON person.address_id = person_address.id "+
 		"JOIN country AS person_address_country ON person_address.country_id = person_address_country.id "+
 		"WHERE `person_optional_address_country`.`name` = ?")
+	
+	c.Assert(remainingDepends, HasLen, 1)
+	c.Assert(remainingDepends, DeepEquals, []depends{
+		depends{index:[][]int{[]int{6}}, dependentColumns:[]string{"Telephones"}},
+	})
+	c.Assert(scanObjects, HasLen, 4)
 }
+
+func (s *querySuite) TestDependentColumns_LevelDeepOptional(c *C) {
+	tbl, _ := s.db.table(reflect.TypeOf((*ParentPerson)(nil)).Elem())
+	sql, _, remainingDepends, scanObjects, _ := s.db.Query().
+		DependentColumns("Person.OptionalAddress.Country", "Person.Address.Country").
+		generateSelectSQL(tbl)
+
+	c.Assert(sql, Equals, "SELECT "+
+		"`parent_person`.`id`, `parent_person`.`person_id`, "+
+		"`parent_person_person`.`id`, `parent_person_person`.`name`, `parent_person_person`.`address_id`, `parent_person_person`.`optional_address_id`, "+
+		"`parent_person_person_address`.`id`, `parent_person_person_address`.`line1`, `parent_person_person_address`.`line2`, `parent_person_person_address`.`country_id`, "+
+		"`parent_person_person_address_country`.`id`, `parent_person_person_address_country`.`name` "+
+		"FROM `parent_person` AS `parent_person` "+
+		"JOIN person AS parent_person_person ON parent_person.person_id = parent_person_person.id "+
+		"JOIN address AS parent_person_person_address ON parent_person_person.address_id = parent_person_person_address.id "+
+		"JOIN country AS parent_person_person_address_country ON parent_person_person_address.country_id = parent_person_person_address_country.id")
+	
+	c.Assert(remainingDepends, HasLen, 1)
+	c.Assert(remainingDepends, DeepEquals, []depends{
+		depends{index:[][]int{[]int{1},[]int{4}}, dependentColumns:[]string{"OptionalAddress.Country"}},
+	})
+	c.Assert(scanObjects, HasLen, 3)
+}
+
+//depends find tests
+
+func (s *querySuite) TestFind_DependentColumns(c *C) {
+	var persons []Person
+	err := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 4)
+	
+	/*c.Assert(persons[0].Id, Equals, 1)
+	c.Assert(persons[0].Address, NotNil)
+	c.Assert(persons[0].Address.Id, Equals, 1)
+	c.Assert(persons[0].Address.Country, NotNil)
+	c.Assert(persons[0].Address.Country.Id, Equals, 1)
+	c.Assert(persons[0].OptionalAddress, NotNil)
+	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[0].OptionalAddress.Country, NotNil)
+	c.Assert(persons[0].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[0].Telephones, HasLen, 2)
+	
+	c.Assert(persons[1].Id, Equals, 4)
+	c.Assert(persons[1].Address, NotNil)
+	c.Assert(persons[1].Address.Id, Equals, 2)
+	c.Assert(persons[1].Address.Country, NotNil)
+	c.Assert(persons[1].Address.Country.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress, NotNil)
+	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress.Country, NotNil)
+	c.Assert(persons[1].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[1].Telephones, HasLen, 2)
+	*/
+}
+
+func (s *querySuite) TestFind_DependentColumns_Where(c *C) {
+	var persons []Person
+	err := s.db.Query().
+		DependentColumns("OptionalAddress", "Telephones", "Address").
+		Where("OptionalAddress.id = ?", 2).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	
+	c.Assert(persons[0].Id, Equals, 1)
+	c.Assert(persons[0].Address, NotNil)
+	c.Assert(persons[0].Address.Id, Equals, 1)
+	c.Assert(persons[0].Address.Country, IsNil)
+	c.Assert(persons[0].OptionalAddress, NotNil)
+	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[0].OptionalAddress.Country, IsNil)
+	//c.Assert(persons[0].Telephones, HasLen, 2)
+	
+	c.Assert(persons[1].Id, Equals, 4)
+	c.Assert(persons[1].Address, NotNil)
+	c.Assert(persons[1].Address.Id, Equals, 2)
+	c.Assert(persons[1].Address.Country, IsNil)
+	c.Assert(persons[1].OptionalAddress, NotNil)
+	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress.Country, IsNil)
+	//c.Assert(persons[1].Telephones, HasLen, 2)
+}
+
+func (s *querySuite) TestFind_DependentColumns_JoinDeep(c *C) {
+	var persons []Person
+	err := s.db.Query().
+		DependentColumns("OptionalAddress.Country", "OptionalAddress", "OptionalAddress.Test.Test" , "OptionalAddress.Country.Test", "Telephones", "Address.Country").
+		Where("id IN (?,?)", 1, 2).
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	
+	/*c.Assert(persons[0].Id, Equals, 1)
+	c.Assert(persons[0].Address, NotNil)
+	c.Assert(persons[0].Address.Id, Equals, 1)
+	c.Assert(persons[0].Address.Country, NotNil)
+	c.Assert(persons[0].Address.Country.Id, Equals, 1)
+	c.Assert(persons[0].OptionalAddress, NotNil)
+	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[0].OptionalAddress.Country, NotNil)
+	c.Assert(persons[0].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[0].Telephones, HasLen, 2)
+	
+	c.Assert(persons[1].Id, Equals, 4)
+	c.Assert(persons[1].Address, NotNil)
+	c.Assert(persons[1].Address.Id, Equals, 2)
+	c.Assert(persons[1].Address.Country, NotNil)
+	c.Assert(persons[1].Address.Country.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress, NotNil)
+	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress.Country, NotNil)
+	c.Assert(persons[1].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[1].Telephones, HasLen, 2)
+	*/
+}
+
+func (s *querySuite) TestFind_DependentColumns_WhereDeep(c *C) {
+	var persons []Person
+	err := s.db.Query().
+		DependentColumns("OptionalAddress.Country", "OptionalAddress", "Telephones", "Address.Country").
+		Where("OptionalAddress.country.name = ?", "usa").
+		Find(&persons)
+
+	c.Assert(err, IsNil)
+	c.Assert(persons, HasLen, 2)
+	c.Assert(persons[0].Id, Equals, 1)
+	c.Assert(persons[0].Address, NotNil)
+	c.Assert(persons[0].Address.Id, Equals, 1)
+	c.Assert(persons[0].Address.Country, NotNil)
+	c.Assert(persons[0].Address.Country.Id, Equals, 1)
+	c.Assert(persons[0].OptionalAddress, NotNil)
+	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[0].OptionalAddress.Country, NotNil)
+	c.Assert(persons[0].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[0].Telephones, HasLen, 2)
+	
+	c.Assert(persons[1].Id, Equals, 4)
+	c.Assert(persons[1].Address, NotNil)
+	c.Assert(persons[1].Address.Id, Equals, 2)
+	c.Assert(persons[1].Address.Country, NotNil)
+	c.Assert(persons[1].Address.Country.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress, NotNil)
+	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
+	c.Assert(persons[1].OptionalAddress.Country, NotNil)
+	c.Assert(persons[1].OptionalAddress.Country.Id, Equals, 2)
+	//c.Assert(persons[1].Telephones, HasLen, 2)
+}
+
+//func (s *querySuite) TestFind_DependentColumns_LevelDeepOptional(c *C) {
+//	tbl, _ := s.db.table(reflect.TypeOf((*ParentPerson)(nil)).Elem())
+//	sql, _, remainingDepends, _ := s.db.Query().
+//		DependentColumns("Person.OptionalAddress.Country", "Person.Address.Country").
+//		generateSelectSQL(tbl)
+//
+//	c.Assert(sql, Equals, "SELECT "+
+//		"`parent_person`.`id`, `parent_person`.`person_id`, "+
+//		"`parent_person_person`.`id`, `parent_person_person`.`name`, `parent_person_person`.`address_id`, `parent_person_person`.`optional_address_id`, "+
+//		"`parent_person_person_address`.`id`, `parent_person_person_address`.`line1`, `parent_person_person_address`.`line2`, `parent_person_person_address`.`country_id`, "+
+//		"`parent_person_person_address_country`.`id`, `parent_person_person_address_country`.`name` "+
+//		"FROM `parent_person` AS `parent_person` "+
+//		"JOIN person AS parent_person_person ON parent_person.person_id = parent_person_person.id "+
+//		"JOIN address AS parent_person_person_address ON parent_person_person.address_id = parent_person_person_address.id "+
+//		"JOIN country AS parent_person_person_address_country ON parent_person_person_address.country_id = parent_person_person_address_country.id")
+//	c.Assert(remainingDepends, HasLen, 1)
+//	c.Assert(remainingDepends, DeepEquals, []depends{ depends{path: []string{"Person"}, remaining: []string{"OptionalAddress", "Country"}}})
+//}

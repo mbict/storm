@@ -49,6 +49,16 @@ type Query struct {
 	groupby bool
 }
 
+type depends struct {
+	index     [][]int
+	dependentColumns []string
+}
+
+type scanObject struct {
+	index [][]int
+	tbl   *table
+}
+
 func newQuery(ctx Context, parent *Query) *Query {
 
 	q := Query{
@@ -362,7 +372,7 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind, err := query.generateSelectSQL(tbl)
+	sqlQuery, bind, remainingDepends, scanObjects, err := query.generateSelectSQL(tbl)
 	if err != nil {
 		return err
 	}
@@ -379,10 +389,26 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	//query the row
 	row := stmt.QueryRow(bind...)
 
-	//create destination and scan
+	//create scan destination
 	dest := make([]interface{}, len(tbl.columns))
 	for key, col := range tbl.columns {
 		dest[key] = v.FieldByIndex(col.goIndex).Addr().Interface()
+	}
+
+	//create dependent scan destination
+	for _, scanObj := range scanObjects {
+		vc := reflect.New(scanObj.tbl.goType)
+
+		//find path and assign
+		target := v.Elem().FieldByIndex(scanObj.index[0])
+		for _, path := range scanObj.index[1:] {
+			target = target.Elem().FieldByIndex(path)
+		}
+		target.Set(vc)
+
+		for _, col := range scanObj.tbl.columns {
+			dest = append(dest, vc.Elem().FieldByIndex(col.goIndex).Addr().Interface())
+		}
 	}
 
 	err = row.Scan(dest...)
@@ -390,8 +416,8 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		return err
 	}
 
-	if query.dependentFetch == true {
-		query.Dependent(v.Addr().Interface(), query.dependentColumns...)
+	if query.dependentFetch == true && len(remainingDepends) > 0 {
+		//query.Dependent(v.Addr().Interface(), remainingDepends...)
 	}
 
 	return tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx)
@@ -435,7 +461,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	}
 
 	//generate sql and prepare
-	sqlQuery, bind, err := query.generateSelectSQL(tbl)
+	sqlQuery, bind, remainingDepends, scanObjects, err := query.generateSelectSQL(tbl)
 	if err != nil {
 		return err
 	}
@@ -472,12 +498,29 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 		}
 		v := reflect.New(tbl.goType)
 
-		//create destination and scan
+		//create scan destination
 		dest := make([]interface{}, len(tbl.columns))
 		for key, col := range tbl.columns {
 			dest[key] = v.Elem().FieldByIndex(col.goIndex).Addr().Interface()
 		}
 
+		//create dependent scan destination
+		for _, scanObj := range scanObjects {
+			vc := reflect.New(scanObj.tbl.goType)
+
+			//find path and assign
+			target := v.Elem().FieldByIndex(scanObj.index[0])
+			for _, path := range scanObj.index[1:] {
+				target = target.Elem().FieldByIndex(path)
+			}
+			target.Set(vc)
+
+			for _, col := range scanObj.tbl.columns {
+				dest = append(dest, vc.Elem().FieldByIndex(col.goIndex).Addr().Interface())
+			}
+		}
+
+		//scan
 		if err = rows.Scan(dest...); err != nil {
 			return err
 		}
@@ -486,11 +529,18 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 			return err
 		}
 
-		if query.dependentFetch == true {
-			err = query.Dependent(v.Interface(), query.dependentColumns...)
+		if query.dependentFetch == true && len(remainingDepends) > 0 {
+			
+			/*
+			for _, depend := range remainingDepends {
+				fmt.Println(depend)
+			}
+			*/
+			
+			/*err = query.Dependent(v.Interface(), remainingDepends...)
 			if err != nil {
 				return err
-			}
+			}*/
 		}
 
 		if sliceTypeIsPtr == true {
@@ -501,21 +551,20 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 	}
 }
 
-func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error) {
+func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, []depends, []scanObject, error) {
 
 	//generate statements
 	where, bindVars := query.generateWhere()
 	order := query.generateOrder()
 	statements, joins, err := query.formatAndResolveStatement(tbl, where, order)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, nil, err
 	}
 
 	//resolve depends and column binder
-	columnsSQL, dependsJoins := query.resolveDependsAndColumns(tbl)
+	columnsSQL, dependsJoins, remainingDepends, scanObjects := query.resolveDependsAndColumns(tbl)
 
 	//write query
-
 	tblName := query.ctx.Dialect().Quote(tbl.tableName)
 	sql := bytes.NewBufferString(fmt.Sprintf("SELECT %s FROM %s AS %s%s%s%s", columnsSQL, tblName, tblName, joins, dependsJoins, statements[0]))
 
@@ -532,7 +581,7 @@ func (query *Query) generateSelectSQL(tbl *table) (string, []interface{}, error)
 		sql.WriteString(fmt.Sprintf(" OFFSET %d", query.offset))
 	}
 
-	return sql.String(), bindVars, err
+	return sql.String(), bindVars, remainingDepends, scanObjects, err
 }
 
 func (query *Query) generateCountSQL(tbl *table) (string, []interface{}, error) {
@@ -731,7 +780,7 @@ func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]stri
 	return out, joinSQL, nil
 }
 
-func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joinSQL string) {
+func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joinSQL string, remainingDepends []depends, scanObjects []scanObject) {
 
 	findRel := func(columnName string, tbl *table) *relation {
 		for _, rel := range tbl.relations {
@@ -757,13 +806,15 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 
 	joinSQL = ""
 	columnsSQL = genColumnSql(tbl.tableName, tbl)
+	bindColumns := make(map[string]*table)
+	bindColumns[tbl.tableName] = tbl
 
 	for _, dependentColumn := range query.dependentColumns {
 		var (
+			scanPath    = [][]int{}
 			targetTbl   = tbl
 			parts       = strings.Split(dependentColumn, ".")
 			startOffset = 0
-			leftJoin    = false
 		)
 
 		if strings.EqualFold(camelToSnake(parts[0]), targetTbl.tableName) {
@@ -772,17 +823,32 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 
 		alias := tbl.tableName
 
-		for _, column := range parts[startOffset:len(parts)] {
-			relColumnName := camelToSnake(column)
+		addRemaningDepend := func(scanPath [][]int, dependentColumn string) {
+			for i, _:= range remainingDepends {
+				if reflect.DeepEqual(remainingDepends[i].index, scanPath) {
+					remainingDepends[i].dependentColumns = append(remainingDepends[i].dependentColumns, dependentColumn)
+					return
+				} 
+			}
+			remainingDepends = append(remainingDepends, depends{index: scanPath, dependentColumns: []string{dependentColumn}})
+		}
+
+		for i, _ := range parts[startOffset:len(parts)] {
+			relColumnName := camelToSnake(parts[i])
 			rel := findRel(relColumnName, targetTbl)
 
 			//if no relation is found we stop searching further
 			if rel == nil {
 				break
 			}
-
+			
+			//append scan path
+			scanPath = append(scanPath, rel.goIndex)
+			
 			//we only allow 1 on 1, no slices etc
 			if rel.relTable != nil {
+				//add to separate depend call
+				addRemaningDepend( scanPath, strings.Join(parts[i:],"."))
 				break
 			}
 
@@ -796,19 +862,29 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 
 			//create join if not already one
 			if _, ok := query.joins[nextAlias]; !ok {
-				//we assume scanner valuer are optional and ptr types of ints
-				if leftJoin == true || rel.relColumn.isScanner == true || rel.relColumn.goType.Kind() == reflect.Ptr {
-					leftJoin = true
-					joinSQL = joinSQL + " LEFT JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
-				} else {
-					joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
+				//we assume scanner valuer are optional and ptr types of ints, we do not include them in this query
+				if rel.relColumn.isScanner == true || rel.relColumn.goType.Kind() == reflect.Ptr {
+					//optional joins are fetched in a separate depends call
+					addRemaningDepend( scanPath, strings.Join(parts[i:],"."))
+					break
 				}
+
+				joinSQL = joinSQL + " JOIN " + joinTbl.tableName + " AS " + nextAlias + " ON " + alias + "." + rel.relColumn.columnName + " = " + nextAlias + ".id"
 				query.joins[nextAlias] = joinTbl
 			}
-			columnsSQL = columnsSQL + ", " + genColumnSql(nextAlias, joinTbl)
+
+			//generate the bind columns only once
+			if _, ok := bindColumns[nextAlias]; !ok {
+
+				scanObjects = append(scanObjects, scanObject{index: scanPath, tbl: joinTbl})
+
+				bindColumns[nextAlias] = joinTbl
+				columnsSQL = columnsSQL + ", " + genColumnSql(nextAlias, joinTbl)
+			}
 			alias = nextAlias
 			targetTbl = joinTbl
 		}
 	}
-	return columnsSQL, joinSQL
+
+	return columnsSQL, joinSQL, remainingDepends, scanObjects
 }
