@@ -131,5 +131,5 @@ type Country struct {
 type Telephone struct {
 	Id       int
 	PersonId int
-	Number   int
+	Number   string
 }

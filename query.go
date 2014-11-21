@@ -50,8 +50,9 @@ type Query struct {
 }
 
 type depends struct {
-	index     [][]int
+	index            [][]int
 	dependentColumns []string
+	rel              *relation
 }
 
 type scanObject struct {
@@ -213,53 +214,65 @@ func (query *Query) Dependent(i interface{}, columns ...string) error {
 		col = camelToSnake(col)
 		for _, rel := range tbl.relations {
 			if strings.EqualFold(rel.name, col) {
-				elm := v.FieldByIndex(rel.goIndex)
-				dst := elm.Addr().Interface()
-				if rel.relColumn != nil && rel.relTable == nil {
-
-					val := v.FieldByIndex(rel.relColumn.goIndex).Interface()
-
-					//check if val is not empty or 0 to avoid lookups who will result in no rows
-					if valuer, ok := val.(driver.Valuer); ok {
-						val, _ = valuer.Value()
-						if val == nil {
-							//empty valuer
-							if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
-								elm.Set(reflect.Zero(elm.Type()))
-							}
-							break
-						}
-					}
-
-					if val, ok := val.(int64); ok {
-						if val == 0 {
-							//empty int
-							if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
-								elm.Set(reflect.Zero(elm.Type()))
-							}
-							break
-						}
-					}
-
-					err := query.ctx.Find(dst, "id = ?", val)
-
-					//if there are no results we reset the column if its a pointer to nil
-					if err == sql.ErrNoRows {
-						if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
-							elm.Set(reflect.Zero(elm.Type()))
-						}
-					} else if err != nil {
-						return err
-					}
-				} else if rel.relColumn != nil && rel.relTable != nil {
-					val := v.FieldByIndex(tbl.aiColumn.goIndex).Interface()
-					err := query.ctx.Find(dst, tbl.tableName+"_id = ?", val)
-					if err != nil && err != sql.ErrNoRows {
-						return err
-					}
+				if err := query.fetchRelatedColumn(v, tbl, rel, nil); err != nil {
+					return err
 				}
 				break
 			}
+		}
+	}
+	return nil
+}
+
+func (query *Query) fetchRelatedColumn(v reflect.Value, tbl *table, rel *relation, depends []string) error {
+	elm := v.FieldByIndex(rel.goIndex)
+	dst := elm.Addr().Interface()
+	if rel.relColumn != nil && rel.relTable == nil {
+		val := v.FieldByIndex(rel.relColumn.goIndex).Interface()
+
+		//check if val is not empty or 0 to avoid lookups who will result in no rows
+		if valuer, ok := val.(driver.Valuer); ok {
+			val, _ = valuer.Value()
+			if val == nil {
+				//empty valuer
+				if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+					elm.Set(reflect.Zero(elm.Type()))
+				}
+				return nil
+			}
+		}
+
+		if val, ok := val.(int64); ok {
+			if val == 0 {
+				//empty int
+				if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+					elm.Set(reflect.Zero(elm.Type()))
+				}
+				return nil
+			}
+		}
+
+		err := query.ctx.Query().
+			DependentColumns(depends...).
+			Where("id = ?", val).
+			Find(dst)
+
+		if err == sql.ErrNoRows {
+			//if there are no results we reset the column if its a pointer to nil
+			if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+				elm.Set(reflect.Zero(elm.Type()))
+			}
+		} else if err != nil {
+			return err
+		}
+	} else if rel.relColumn != nil && rel.relTable != nil {
+		val := v.FieldByIndex(tbl.aiColumn.goIndex).Interface()
+		err := query.ctx.Query().
+			DependentColumns(depends...).
+			Where(tbl.tableName+"_id = ?", val).
+			Find(dst)
+		if err != nil && err != sql.ErrNoRows {
+			return err
 		}
 	}
 	return nil
@@ -400,7 +413,8 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		vc := reflect.New(scanObj.tbl.goType)
 
 		//find path and assign
-		target := v.Elem().FieldByIndex(scanObj.index[0])
+
+		target := reflect.Indirect(v).FieldByIndex(scanObj.index[0])
 		for _, path := range scanObj.index[1:] {
 			target = target.Elem().FieldByIndex(path)
 		}
@@ -416,11 +430,30 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		return err
 	}
 
-	if query.dependentFetch == true && len(remainingDepends) > 0 {
-		//query.Dependent(v.Addr().Interface(), remainingDepends...)
+	if err = tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx); err != nil {
+		return err
 	}
 
-	return tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx)
+	if query.dependentFetch == true && len(remainingDepends) > 0 {
+
+		for _, depend := range remainingDepends {
+			currentTbl := tbl
+			vTarget := v.Addr()
+
+			//walk the structures to find the depended structure (ignoring the last index)
+			for _, index := range depend.index[:len(depend.index)-1] {
+				vTarget = v.Elem().FieldByIndex(index)
+				if currentTbl, ok = query.ctx.table(typeIndirect(vTarget.Type())); !ok {
+					return fmt.Errorf("Depend cannot find table, not registered %s, %s", typeIndirect(vTarget.Type()))
+				}
+			}
+
+			if err := query.fetchRelatedColumn(vTarget.Elem(), currentTbl, depend.rel, depend.dependentColumns); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 //fetch a all rows into a slice
@@ -530,17 +563,23 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 		}
 
 		if query.dependentFetch == true && len(remainingDepends) > 0 {
-			
-			/*
+
 			for _, depend := range remainingDepends {
-				fmt.Println(depend)
+				currentTbl := tbl
+				vTarget := v
+
+				//walk the structures to find the depended structure (ignoring the last index)
+				for _, index := range depend.index[:len(depend.index)-1] {
+					vTarget = v.Elem().FieldByIndex(index)
+					if currentTbl, ok = query.ctx.table(typeIndirect(vTarget.Type())); !ok {
+						return fmt.Errorf("Depend cannot find table, not registered %s, %s", typeIndirect(vTarget.Type()))
+					}
+				}
+
+				if err := query.fetchRelatedColumn(vTarget.Elem(), currentTbl, depend.rel, depend.dependentColumns); err != nil {
+					return err
+				}
 			}
-			*/
-			
-			/*err = query.Dependent(v.Interface(), remainingDepends...)
-			if err != nil {
-				return err
-			}*/
 		}
 
 		if sliceTypeIsPtr == true {
@@ -823,14 +862,21 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 
 		alias := tbl.tableName
 
-		addRemaningDepend := func(scanPath [][]int, dependentColumn string) {
-			for i, _:= range remainingDepends {
+		addRemaningDepend := func(scanPath [][]int, dependentColumn string, rel *relation) {
+			for i, _ := range remainingDepends {
 				if reflect.DeepEqual(remainingDepends[i].index, scanPath) {
-					remainingDepends[i].dependentColumns = append(remainingDepends[i].dependentColumns, dependentColumn)
+					if len(dependentColumn) > 0 {
+						remainingDepends[i].dependentColumns = append(remainingDepends[i].dependentColumns, dependentColumn)
+					}
 					return
-				} 
+				}
 			}
-			remainingDepends = append(remainingDepends, depends{index: scanPath, dependentColumns: []string{dependentColumn}})
+
+			if len(dependentColumn) > 0 {
+				remainingDepends = append(remainingDepends, depends{index: scanPath, dependentColumns: []string{dependentColumn}, rel: rel})
+			} else {
+				remainingDepends = append(remainingDepends, depends{index: scanPath, dependentColumns: []string{}, rel: rel})
+			}
 		}
 
 		for i, _ := range parts[startOffset:len(parts)] {
@@ -841,14 +887,14 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 			if rel == nil {
 				break
 			}
-			
+
 			//append scan path
 			scanPath = append(scanPath, rel.goIndex)
-			
+
 			//we only allow 1 on 1, no slices etc
 			if rel.relTable != nil {
 				//add to separate depend call
-				addRemaningDepend( scanPath, strings.Join(parts[i:],"."))
+				addRemaningDepend(scanPath, strings.Join(parts[i+1:], "."), rel)
 				break
 			}
 
@@ -865,7 +911,7 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 				//we assume scanner valuer are optional and ptr types of ints, we do not include them in this query
 				if rel.relColumn.isScanner == true || rel.relColumn.goType.Kind() == reflect.Ptr {
 					//optional joins are fetched in a separate depends call
-					addRemaningDepend( scanPath, strings.Join(parts[i:],"."))
+					addRemaningDepend(scanPath, strings.Join(parts[i+1:], "."), rel)
 					break
 				}
 
@@ -875,9 +921,7 @@ func (query *Query) resolveDependsAndColumns(tbl *table) (columnsSQL string, joi
 
 			//generate the bind columns only once
 			if _, ok := bindColumns[nextAlias]; !ok {
-
 				scanObjects = append(scanObjects, scanObject{index: scanPath, tbl: joinTbl})
-
 				bindColumns[nextAlias] = joinTbl
 				columnsSQL = columnsSQL + ", " + genColumnSql(nextAlias, joinTbl)
 			}
