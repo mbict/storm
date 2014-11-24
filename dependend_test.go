@@ -389,7 +389,6 @@ func (s *dependendSuite) TestFirst_DependentColumns(c *C) {
 		First(&person)
 
 	c.Assert(err, IsNil)
-
 	c.Assert(person.Id, Equals, 4)
 	c.Assert(person.Address, NotNil)
 	c.Assert(person.Address.Id, Equals, 2)
@@ -401,118 +400,80 @@ func (s *dependendSuite) TestFirst_DependentColumns(c *C) {
 }
 
 func (s *dependendSuite) TestFirst_DependentColumns_Where(c *C) {
-	var persons []Person
+	var person Person
 	err := s.db.Query().
 		DependentColumns("OptionalAddress", "Telephones", "Address").
-		Where("OptionalAddress.id = ?", 2).
-		Find(&persons)
+		Where("OptionalAddress.id = ?", 4).
+		First(&person)
 
 	c.Assert(err, IsNil)
-	c.Assert(persons, HasLen, 2)
-
-	c.Assert(persons[0].Id, Equals, 1)
-	c.Assert(persons[0].Address, NotNil)
-	c.Assert(persons[0].Address.Id, Equals, 1)
-	c.Assert(persons[0].Address.Country, IsNil)
-	c.Assert(persons[0].OptionalAddress, NotNil)
-	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
-	c.Assert(persons[0].OptionalAddress.Country, IsNil)
-	c.Assert(persons[0].Telephones, HasLen, 4)
-
-	c.Assert(persons[1].Id, Equals, 4)
-	c.Assert(persons[1].Address, NotNil)
-	c.Assert(persons[1].Address.Id, Equals, 2)
-	c.Assert(persons[1].Address.Country, IsNil)
-	c.Assert(persons[1].OptionalAddress, NotNil)
-	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
-	c.Assert(persons[1].OptionalAddress.Country, IsNil)
-	c.Assert(persons[1].Telephones, HasLen, 2)
+	c.Assert(person.Id, Equals, 2)
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 3)
+	c.Assert(person.Address.Country, IsNil)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 4)
+	c.Assert(person.OptionalAddress.Country, IsNil)
+	c.Assert(person.Telephones, HasLen, 0)
 }
 
 func (s *dependendSuite) TestFirst_DependentColumns_JoinDeep(c *C) {
-	var persons []Person
+	var person Person
 	err := s.db.Query().
 		DependentColumns("OptionalAddress.Country", "OptionalAddress", "OptionalAddress.Test.Test", "OptionalAddress.Country.Test", "Telephones", "Address.Country").
-		Where("id IN (?,?)", 1, 2).
-		Find(&persons)
+		Where("id = ?", 1).
+		Find(&person)
 
 	c.Assert(err, IsNil)
-	c.Assert(persons, HasLen, 2)
-
-	c.Assert(persons[0].Id, Equals, 1)
-	c.Assert(persons[0].Address, NotNil)
-	c.Assert(persons[0].Address.Id, Equals, 1)
-	c.Assert(persons[0].Address.Country, NotNil)
-	c.Assert(persons[0].Address.Country.Id, Equals, 1)
-	c.Assert(persons[0].OptionalAddress, NotNil)
-	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
-	c.Assert(persons[0].OptionalAddress.Country, NotNil)
-	c.Assert(persons[0].OptionalAddress.Country.Id, Equals, 2)
-	c.Assert(persons[0].Telephones, HasLen, 4)
-
-	c.Assert(persons[1].Id, Equals, 2)
-	c.Assert(persons[1].Address, NotNil)
-	c.Assert(persons[1].Address.Id, Equals, 3)
-	c.Assert(persons[1].Address.Country, NotNil)
-	c.Assert(persons[1].Address.Country.Id, Equals, 3)
-	c.Assert(persons[1].OptionalAddress, NotNil)
-	c.Assert(persons[1].OptionalAddress.Id, Equals, 4)
-	c.Assert(persons[1].OptionalAddress.Country, NotNil)
-	c.Assert(persons[1].OptionalAddress.Country.Id, Equals, 4)
-	c.Assert(persons[1].Telephones, HasLen, 0)
+	c.Assert(person.Id, Equals, 1)
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 1)
+	c.Assert(person.Address.Country, NotNil)
+	c.Assert(person.Address.Country.Id, Equals, 1)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 2)
+	c.Assert(person.OptionalAddress.Country, NotNil)
+	c.Assert(person.OptionalAddress.Country.Id, Equals, 2)
+	c.Assert(person.Telephones, HasLen, 4)
 }
 
 func (s *dependendSuite) TestFirst_DependentColumns_WhereDeep(c *C) {
-	var persons []Person
+	var person Person
 	err := s.db.Query().
 		DependentColumns("OptionalAddress.Country", "OptionalAddress", "Telephones", "Address.Country").
-		Where("OptionalAddress.country.name = ?", "usa").
-		Find(&persons)
+		Where("OptionalAddress.country.name = ?", "fr").
+		Find(&person)
 
 	c.Assert(err, IsNil)
-	c.Assert(persons, HasLen, 2)
-	c.Assert(persons[0].Id, Equals, 1)
-	c.Assert(persons[0].Address, NotNil)
-	c.Assert(persons[0].Address.Id, Equals, 1)
-	c.Assert(persons[0].Address.Country, NotNil)
-	c.Assert(persons[0].Address.Country.Id, Equals, 1)
-	c.Assert(persons[0].OptionalAddress, NotNil)
-	c.Assert(persons[0].OptionalAddress.Id, Equals, 2)
-	c.Assert(persons[0].OptionalAddress.Country, NotNil)
-	c.Assert(persons[0].OptionalAddress.Country.Id, Equals, 2)
-	c.Assert(persons[0].Telephones, HasLen, 4)
-
-	c.Assert(persons[1].Id, Equals, 4)
-	c.Assert(persons[1].Address, NotNil)
-	c.Assert(persons[1].Address.Id, Equals, 2)
-	c.Assert(persons[1].Address.Country, NotNil)
-	c.Assert(persons[1].Address.Country.Id, Equals, 2)
-	c.Assert(persons[1].OptionalAddress, NotNil)
-	c.Assert(persons[1].OptionalAddress.Id, Equals, 2)
-	c.Assert(persons[1].OptionalAddress.Country, NotNil)
-	c.Assert(persons[1].OptionalAddress.Country.Id, Equals, 2)
-	c.Assert(persons[1].Telephones, HasLen, 2)
+	c.Assert(person.Id, Equals, 2)
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 3)
+	c.Assert(person.Address.Country, NotNil)
+	c.Assert(person.Address.Country.Id, Equals, 3)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 4)
+	c.Assert(person.OptionalAddress.Country, NotNil)
+	c.Assert(person.OptionalAddress.Country.Id, Equals, 4)
+	c.Assert(person.Telephones, HasLen, 0)
 }
 
 func (s *dependendSuite) TestFirst_DependentColumns_LevelDeepOptional(c *C) {
-	var parentPersons []ParentPerson
+	var parentPerson ParentPerson
 	err := s.db.Query().
 		DependentColumns("Person.OptionalAddress.Country", "Person.Address.Country", "Person.Telephones").
 		Where("person.id = ?", 4).
-		Find(&parentPersons)
+		First(&parentPerson)
 
 	c.Assert(err, IsNil)
-	c.Assert(parentPersons, HasLen, 1)
-
-	c.Assert(parentPersons[0].Person, NotNil)
-	c.Assert(parentPersons[0].Person.Id, Equals, 4)
-	c.Assert(parentPersons[0].Person.Address, NotNil)
-	c.Assert(parentPersons[0].Person.Address.Id, Equals, 2)
-	c.Assert(parentPersons[0].Person.Address.Country, NotNil)
-	c.Assert(parentPersons[0].Person.Address.Country.Id, Equals, 2)
-	c.Assert(parentPersons[0].Person.OptionalAddress, NotNil)
-	c.Assert(parentPersons[0].Person.OptionalAddress.Id, Equals, 2)
-	c.Assert(parentPersons[0].Person.OptionalAddress.Country, NotNil)
-	c.Assert(parentPersons[0].Person.OptionalAddress.Country.Id, Equals, 2)
-	c.Assert(parentPersons[0].Person.Telephones, HasLen, 2)
+	c.Assert(parentPerson.Person, NotNil)
+	c.Assert(parentPerson.Person.Id, Equals, 4)
+	c.Assert(parentPerson.Person.Address, NotNil)
+	c.Assert(parentPerson.Person.Address.Id, Equals, 2)
+	c.Assert(parentPerson.Person.Address.Country, NotNil)
+	c.Assert(parentPerson.Person.Address.Country.Id, Equals, 2)
+	c.Assert(parentPerson.Person.OptionalAddress, NotNil)
+	c.Assert(parentPerson.Person.OptionalAddress.Id, Equals, 2)
+	c.Assert(parentPerson.Person.OptionalAddress.Country, NotNil)
+	c.Assert(parentPerson.Person.OptionalAddress.Country.Id, Equals, 2)
+	c.Assert(parentPerson.Person.Telephones, HasLen, 2)
 }

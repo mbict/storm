@@ -442,7 +442,7 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 
 			//walk the structures to find the depended structure (ignoring the last index)
 			for _, index := range depend.index[:len(depend.index)-1] {
-				vTarget = v.Elem().FieldByIndex(index)
+				vTarget = vTarget.Elem().FieldByIndex(index)
 				if currentTbl, ok = query.ctx.table(typeIndirect(vTarget.Type())); !ok {
 					return fmt.Errorf("Depend cannot find table, not registered %s, %s", typeIndirect(vTarget.Type()))
 				}
@@ -570,7 +570,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 
 				//walk the structures to find the depended structure (ignoring the last index)
 				for _, index := range depend.index[:len(depend.index)-1] {
-					vTarget = v.Elem().FieldByIndex(index)
+					vTarget = vTarget.Elem().FieldByIndex(index)
 					if currentTbl, ok = query.ctx.table(typeIndirect(vTarget.Type())); !ok {
 						return fmt.Errorf("Depend cannot find table, not registered %s, %s", typeIndirect(vTarget.Type()))
 					}
