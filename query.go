@@ -210,11 +210,27 @@ func (query *Query) Dependent(i interface{}, columns ...string) error {
 		return fmt.Errorf("no registered structure for `%s` found", v.Type().String())
 	}
 
+	//group similar depends
+	var depends map[string][]string = make(map[string][]string)
 	for _, col := range columns {
-		col = camelToSnake(col)
+		parts := strings.Split(col, ".")
+		col = camelToSnake(parts[0])
+
+		if len(parts) > 1 {
+			depends[col] = append(depends[col], strings.Join(parts[1:], "."))
+		} else {
+			//init a empty depends array if not present
+			if _, ok := depends[col]; !ok {
+				depends[col] = []string{}
+			}
+		}
+	}
+
+	//fetch the dependend fields
+	for col, dependendColumns := range depends {
 		for _, rel := range tbl.relations {
 			if strings.EqualFold(rel.name, col) {
-				if err := query.fetchRelatedColumn(v, tbl, rel, nil); err != nil {
+				if err := query.fetchRelatedColumn(v, tbl, rel, dependendColumns); err != nil {
 					return err
 				}
 				break

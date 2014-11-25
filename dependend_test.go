@@ -477,3 +477,64 @@ func (s *dependendSuite) TestFirst_DependentColumns_LevelDeepOptional(c *C) {
 	c.Assert(parentPerson.Person.OptionalAddress.Country.Id, Equals, 2)
 	c.Assert(parentPerson.Person.Telephones, HasLen, 2)
 }
+
+/***
+ * Test dependend function
+ */
+
+func (s *dependendSuite) TestDependent(c *C) {
+	var person *Person
+
+	//get enity and fetch dependent
+	c.Assert(s.db.Query().Where("id = ?", 1).First(&person), IsNil)
+	c.Assert(s.db.Dependent(&person, "OptionalAddress", "Telephones", "Address"), IsNil)
+
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 1)
+	c.Assert(person.Address.Country, IsNil)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 2)
+	c.Assert(person.OptionalAddress.Country, IsNil)
+	c.Assert(person.Telephones, HasLen, 4)
+}
+
+func (s *dependendSuite) TestDependent_Deep(c *C) {
+	var person *Person
+
+	//get enity and fetch dependent
+	c.Assert(s.db.Query().Where("id = ?", 1).First(&person), IsNil)
+	c.Assert(s.db.Dependent(&person, "OptionalAddress.Country", "Telephones", "Address.Country"), IsNil)
+
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 1)
+	c.Assert(person.Address.Country, NotNil)
+	c.Assert(person.Address.Country.Id, Equals, 1)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 2)
+	c.Assert(person.OptionalAddress.Country, NotNil)
+	c.Assert(person.OptionalAddress.Country.Id, Equals, 2)
+	c.Assert(person.Telephones, HasLen, 4)
+}
+
+func (s *dependendSuite) TestDependent_Grouped(c *C) {
+	var person *Person
+
+	//get enity and fetch dependent
+	c.Assert(s.db.Query().Where("id = ?", 1).First(&person), IsNil)
+	c.Assert(s.db.Dependent(&person, "OptionalAddress.Country", "OptionalAddress", "Telephones", "Address", "Address.Country"), IsNil)
+
+	c.Assert(person.Address, NotNil)
+	c.Assert(person.Address.Id, Equals, 1)
+	c.Assert(person.Address.Country, NotNil)
+	c.Assert(person.Address.Country.Id, Equals, 1)
+	c.Assert(person.OptionalAddress, NotNil)
+	c.Assert(person.OptionalAddress.Id, Equals, 2)
+	c.Assert(person.OptionalAddress.Country, NotNil)
+	c.Assert(person.OptionalAddress.Country.Id, Equals, 2)
+	c.Assert(person.Telephones, HasLen, 4)
+}
+
+func (s *dependendSuite) TestDependentColumns_WrongInput(c *C) {
+	var person *Person
+	c.Assert(s.db.Dependent(&person, "Tag", "TagPtr", "Tags", "TagsPtr", "ManyTags", "ManyTagsPtr"), ErrorMatches, "Cannot get dependent fields on nil struct")
+}
