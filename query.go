@@ -244,7 +244,16 @@ func (query *Query) fetchRelatedColumn(v reflect.Value, tbl *table, rel *relatio
 	elm := v.FieldByIndex(rel.goIndex)
 	dst := elm.Addr().Interface()
 	if rel.relColumn != nil && rel.relTable == nil {
-		val := v.FieldByIndex(rel.relColumn.goIndex).Interface()
+		relVal := v.FieldByIndex(rel.relColumn.goIndex)
+
+		//on nil value early out no lookup
+		if relVal.Kind() == reflect.Ptr && relVal.IsNil() {
+			if elm.Kind() == reflect.Ptr && elm.IsNil() == false {
+				elm.Set(reflect.Zero(elm.Type()))
+			}
+			return nil
+		}
+		val := relVal.Interface()
 
 		//check if val is not empty or 0 to avoid lookups who will result in no rows
 		if valuer, ok := val.(driver.Valuer); ok {
