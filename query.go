@@ -199,7 +199,6 @@ func (query *Query) Dependent(i interface{}, columns ...string) error {
 		}
 	}
 	v = reflect.Indirect(v)
-
 	if v.Kind() != reflect.Struct || !v.CanSet() {
 		return errors.New("provided input is not a structure type")
 	}
@@ -387,11 +386,11 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 
 	//reset element to zero variant
 	v = v.Elem()
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Ptr && v.CanSet() {
 		v.Set(reflect.New(v.Type().Elem()))
 	}
-	v = reflect.Indirect(v)
 
+	v = reflect.Indirect(v)
 	if v.Kind() != reflect.Struct || !v.CanSet() {
 		return errors.New("provided input is not a structure type")
 	}
