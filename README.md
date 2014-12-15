@@ -228,8 +228,8 @@ db.DropTable((*Customer)(nil))
 
 
 **TODO**
-- Create a function to fetch all the related fields(slices)
-- Depends() function who wil take a entity as input and fillin all the related structures.
-- Give some work to the 1 on 1 relations/structures (now only one on many are supported)
+- Refactor refactor refactor
+- Rewrite this documentation, this is outdated 
+
 
 Thats it for now, Enjoy
