@@ -37,10 +37,11 @@ func (s *transactionSuite) SetUpSuite(c *C) {
 
 func (s *transactionSuite) SetUpTest(c *C) {
 	s.db.DB().Exec("DROP TABLE `person`")
+	s.db.DB().Exec("COMMIT()")
 	_, err := s.db.DB().Exec("CREATE TABLE `person` (`id` INTEGER PRIMARY KEY, `name` TEXT, `address_id` INTEGER, `optional_address_id` INTEGER)")
 	c.Assert(err, IsNil)
+	s.db.DB().Exec("COMMIT()")
 
-	//c.Assert(err, IsNil)
 	s.tx = s.db.Begin()
 }
 
