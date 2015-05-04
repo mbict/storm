@@ -551,6 +551,35 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 			} else if vs.Len() == 0 {
 				return sql.ErrNoRows
 			}
+			rows.Close()
+			
+			sliceLen := vs.Len()
+			for i := 0; i < sliceLen; i++ {
+				elem := reflect.Indirect(vs.Index(i)).Addr()
+				if err = tbl.callbacks.invoke(elem, "OnInit", query.ctx); err != nil {
+					return err
+				}
+		
+				if query.dependentFetch == true && len(remainingDepends) > 0 {
+					for _, depend := range remainingDepends {
+						currentTbl := tbl
+						vTarget := elem
+		
+						//walk the structures to find the depended structure (ignoring the last index)
+						for _, index := range depend.index[:len(depend.index)-1] {
+							vTarget = vTarget.Elem().FieldByIndex(index)
+							if currentTbl, ok = query.ctx.table(typeIndirect(vTarget.Type())); !ok {
+								return fmt.Errorf("Depend cannot find table, not registered %s, %s", typeIndirect(vTarget.Type()))
+							}
+						}
+		
+						if err := query.fetchRelatedColumn(vTarget.Elem(), currentTbl, depend.rel, depend.dependentColumns); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			
 			return nil
 		}
 		v := reflect.New(tbl.goType)
@@ -581,7 +610,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 		if err = rows.Scan(dest...); err != nil {
 			return err
 		}
-
+/*
 		if err = tbl.callbacks.invoke(v, "OnInit", query.ctx); err != nil {
 			return err
 		}
@@ -605,7 +634,7 @@ func (query *Query) fetchAll(i interface{}, where ...interface{}) (err error) {
 				}
 			}
 		}
-
+*/
 		if sliceTypeIsPtr == true {
 			vs.Set(reflect.Append(vs, v))
 		} else {
