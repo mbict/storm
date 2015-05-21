@@ -175,7 +175,7 @@ func extractStructColumns(v reflect.Value, index []int) (cols []*column, rels []
 func findPKs(cols []*column) (pks []*column) {
 
 	for _, col := range cols {
-		if _, ok := col.settings["pk"]; ok && col.goType.Kind() == reflect.Int {
+		if _, ok := col.settings["pk"]; ok && (col.goType.Kind() == reflect.Int || col.goType.Kind() == reflect.Int64) {
 			pks = append(pks, col)
 		}
 	}
@@ -188,7 +188,7 @@ func findPKs(cols []*column) (pks []*column) {
 	//try to determine auto pk if no one is defined in a tag
 	for _, col := range cols {
 
-		if col.goType.Kind() == reflect.Int && strings.ToLower(col.columnName) == "id" {
+		if (col.goType.Kind() == reflect.Int || col.goType.Kind() == reflect.Int64) && strings.ToLower(col.columnName) == "id" {
 			pks = append(pks, col)
 			return
 		}
@@ -199,7 +199,7 @@ func findPKs(cols []*column) (pks []*column) {
 //find auto increment keys
 func findAI(cols []*column, pks []*column) *column {
 	for _, col := range cols {
-		if _, ok := col.settings["ai"]; ok && col.goType.Kind() == reflect.Int {
+		if _, ok := col.settings["ai"]; ok && (col.goType.Kind() == reflect.Int || col.goType.Kind() == reflect.Int64) {
 			return col
 		}
 	}
