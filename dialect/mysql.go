@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/mbict/null"
 )
 
 type mysql struct {
@@ -18,13 +20,13 @@ func (*mysql) SqlType(column interface{}, size int) string {
 	switch column.(type) {
 	case time.Time, *time.Time:
 		return "DATETIME"
-	case bool, sql.NullBool, *bool:
+	case bool, sql.NullBool, null.Bool, *bool:
 		return "BOOLEAN"
 	case int, int8, int16, int32, uint, uint8, uint16, uint32, *int, *int8, *int16, *int32, *uint, *uint8, *uint16, *uint32:
 		return "INT"
-	case int64, uint64, sql.NullInt64, *int64, *uint64:
+	case int64, uint64, sql.NullInt64, null.Int, *int64, *uint64:
 		return "BIGINT"
-	case float32, float64, sql.NullFloat64, *float32, *float64:
+	case float32, float64, sql.NullFloat64, null.Float, *float32, *float64:
 		return "DOUBLE"
 	case []byte:
 		if size > 0 && size < 65532 {
@@ -32,14 +34,14 @@ func (*mysql) SqlType(column interface{}, size int) string {
 		} else {
 			return "LONGBLOB"
 		}
-	case string, sql.NullString, *string:
+	case string, sql.NullString, null.String, *string:
 		if size > 0 && size < 65532 {
 			return fmt.Sprintf("VARCHAR(%d)", size)
 		} else {
 			return "LONGTEXT"
 		}
 	default:
-		panic(fmt.Sprintf("Invalid sql type for mysql (%v)", column))
+		panic(fmt.Sprintf("Invalid sql type for mysql (%#v / %T)", column))
 	}
 }
 

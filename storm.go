@@ -492,7 +492,6 @@ func (storm *Storm) generateCreateTableSQL(tbl *table) string {
 		if tbl.aiColumn == col {
 			params = " " + storm.dialect.SqlPrimaryKey(column, 0)
 		}
-
 		columns = append(columns, storm.dialect.Quote(col.columnName)+" "+storm.dialect.SqlType(column, 0)+params)
 	}
 
