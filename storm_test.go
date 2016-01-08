@@ -266,6 +266,11 @@ func (s *stormSuite) TestSave_Update(c *C) {
 }
 
 func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
+
+	//Time:time.Time{sec:63429436799, nsec:0, loc:(*time.Location)(0xad2400)}, Byte:[]uint8{0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30}
+	//Time:time.Time{sec:63429436799, nsec:0, loc:(*time.Location)(0xae7400)}, Byte:[]uint8{0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30
+	//time.LoadLocation()
+
 	c.Assert(s.db.RegisterStructure((*testAllTypeStructure)(nil)), IsNil)
 	_, err := s.db.DB().Exec("CREATE TABLE `test_all_type_structure` (" +
 		"`id` INTEGER PRIMARY KEY,`test_custom_type` INTEGER,`time` DATETIME,`byte` BLOB,`string` TEXT,`int` INTEGER,`int64` BIGINT," +
@@ -277,7 +282,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input := &testAllTypeStructure{
 		Id:             0,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -309,7 +314,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -338,7 +343,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
@@ -364,7 +369,7 @@ func (s *stormSuite) TestSave_AllSupportedTypes(c *C) {
 	input = &testAllTypeStructure{
 		Id:             1,
 		TestCustomType: 3,
-		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.Local),
+		Time:           time.Date(2010, time.December, 31, 23, 59, 59, 0, time.UTC),
 		Byte:           []byte("1234567890"),
 		String:         "test 1",
 		Int:            1234,
