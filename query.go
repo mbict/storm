@@ -711,7 +711,7 @@ func (query *Query) generateOrder() string {
 // extractStatment extracts the statement
 var (
 	reExtract       = regexp.MustCompile("'.*'|([0-9A-Za-z\\][_\\-]+\\.)*[0-9A-Za-z_\\-]+")
-	reReservedWords = regexp.MustCompile("^(ASC|DESC|ORDER|GROUP|BY|AS|WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|\\-?\\d+(.\\d+)?)$")
+	reReservedWords = regexp.MustCompile("^(ASC|DESC|ORDER|GROUP|BY|AS|WHERE|IN|NOT|COUNT|NULL|MAX|MIN|AND|OR|RAND|RANDOM\\-?\\d+(.\\d+)?)$")
 )
 
 func (query *Query) formatAndResolveStatement(tbl *table, ins ...string) ([]string, string, error) {
