@@ -385,12 +385,16 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	}
 
 	//reset element to zero variant
-	v = v.Elem()
-	if v.Kind() == reflect.Ptr && v.CanSet() {
-		v.Set(reflect.New(v.Type().Elem()))
+	v_ptr := v.Elem()
+	var dst reflect.Value
+	hasEmpty := v_ptr.Kind() == reflect.Ptr && v_ptr.CanSet()
+	if hasEmpty {
+		dst = reflect.New(v_ptr.Type().Elem())
+		v = reflect.Indirect(dst)
+	} else {
+		v = reflect.Indirect(v_ptr)
 	}
 
-	v = reflect.Indirect(v)
 	if v.Kind() != reflect.Struct || !v.CanSet() {
 		return errors.New("provided input is not a structure type")
 	}
@@ -437,7 +441,6 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 		vc := reflect.New(scanObj.tbl.goType)
 
 		//find path and assign
-
 		target := reflect.Indirect(v).FieldByIndex(scanObj.index[0])
 		for _, path := range scanObj.index[1:] {
 			target = target.Elem().FieldByIndex(path)
@@ -458,6 +461,13 @@ func (query *Query) fetchRow(i interface{}, where ...interface{}) (err error) {
 	if err = tbl.callbacks.invoke(v.Addr(), "OnInit", query.ctx); err != nil {
 		return err
 	}
+
+	//overwrite input with new values
+	if hasEmpty {
+		v_ptr.Set(dst)
+	}
+
+	//if input was a nil pointer we overwrite the nil with the binded value
 
 	if query.dependentFetch == true && len(remainingDepends) > 0 {
 
