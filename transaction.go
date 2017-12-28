@@ -2,111 +2,114 @@ package storm
 
 import (
 	"database/sql"
-	"log"
-	"reflect"
-
-	"github.com/mbict/storm/dialect"
 )
 
-//Transaction structure
-type Transaction struct {
-	storm *Storm
-	tx    *sql.Tx
+type Transaction interface {
+	dbContext
+	CRUD
+	Query
+
+	DB() *sql.Tx
+	Commit() error
+	Rollback() error
 }
 
-func newTransaction(s *Storm) *Transaction {
+//Transaction structure
+type transaction struct {
+	dbContext
+	tx *sql.Tx
+}
 
-	tx, err := s.db.Begin()
-	if err != nil {
-		panic(err)
-	}
-
-	return &Transaction{
-		storm: s,
-		tx:    tx,
+func newTransaction(storm Storm, tx *sql.Tx) Transaction {
+	return &transaction{
+		dbContext: storm,
+		tx:        tx,
 	}
 }
 
 //DB will return the current connection
-func (transaction *Transaction) DB() sqlCommon {
-	return transaction.tx
+func (t *transaction) DB() *sql.Tx {
+	return t.tx
 }
 
-//Storm will return the storm instance
-func (transaction *Transaction) Storm() *Storm {
-	return transaction.storm
+/*****************************************
+  Implementation dbContext interface
+ *****************************************/
+
+//DB will return the current connection
+func (t *transaction) db() sqlCommon {
+	return t.tx
 }
 
-//Dialect returns the current dialect used by the connection
-func (transaction *Transaction) Dialect() dialect.Dialect {
-	return transaction.storm.Dialect()
-}
+/*****************************************
+  Implementation Query interface
+ *****************************************/
 
 //Query Creates a clone of the current query object
-func (transaction *Transaction) Query() *Query {
-	return newQuery(transaction, nil)
+func (t *transaction) Query() Query {
+	return newQuery(t, nil)
 }
 
 //Order will set the order
-func (transaction *Transaction) Order(column string, direction SortDirection) *Query {
-	return transaction.Query().Order(column, direction)
+func (t *transaction) Order(column string, direction SortDirection) Query {
+	return t.Query().Order(column, direction)
 }
 
 //Where adds new where conditions to the query
-func (transaction *Transaction) Where(condition string, bindAttr ...interface{}) *Query {
-	return transaction.Query().Where(condition, bindAttr...)
+func (t *transaction) Where(condition string, bindAttr ...interface{}) Query {
+	return t.Query().Where(condition, bindAttr...)
 }
 
 //Limit sets the limit for select
-func (transaction *Transaction) Limit(limit int) *Query {
-	return transaction.Query().Limit(limit)
+func (t *transaction) Limit(limit int) Query {
+	return t.Query().Limit(limit)
 }
 
 //Offset sets the offset for select
-func (transaction *Transaction) Offset(offset int) *Query {
-	return transaction.Query().Offset(offset)
+func (t *transaction) Offset(offset int) Query {
+	return t.Query().Offset(offset)
 }
 
-//Find will try to retreive the matching structure/entity based on your where statement
+//Find will try to retrieve the matching structure/entity based on your where statement
 //You can priovide a slice or a single element
-func (transaction *Transaction) Find(i interface{}, where ...interface{}) error {
-	return transaction.Query().Find(i, where...)
+func (t *transaction) Find(i interface{}, where ...interface{}) error {
+	return t.Query().Find(i, where...)
 }
 
-//Dependent will try to fetch all the related enities and populate the dependent fields (slice and single values)
-//You can provide a list with column names if you only want those fields to be populated
-func (transaction *Transaction) Dependent(i interface{}, columns ...string) error {
-	return transaction.Query().Dependent(i, columns...)
+func (t *transaction) FetchRelated(columns ...string) Query {
+	return t.Query().FetchRelated(columns...)
+}
+
+func (t *transaction) Count(i interface{}) (int64, error) {
+	return t.Query().Count(i)
+}
+
+func (t *transaction) FindRelated(i interface{}, columns ...string) error {
+	return t.Query().FindRelated(i, columns...)
+}
+
+func (t *transaction) First(i interface{}) error {
+	return t.Query().First(i)
 }
 
 //Delete will delete the provided structure from the datastore
-func (transaction *Transaction) Delete(i interface{}) error {
-	return transaction.storm.deleteEntity(i, transaction)
+func (t *transaction) Delete(i interface{}) error {
+	//return t.storm().deleteEntity(i, t)
+	panic("implement me")
 }
 
 //Save will insert or update the provided structure in the datastore
-func (transaction *Transaction) Save(i interface{}) error {
-	return transaction.storm.saveEntity(i, transaction)
+func (t *transaction) Save(i interface{}) error {
+	//return t.storm().saveEntity(i, t)
+	panic("implement me")
 }
 
 //Commit will commit the current transaction and closes
-func (transaction *Transaction) Commit() error {
-	return transaction.tx.Commit()
+func (t *transaction) Commit() error {
+	return t.tx.Commit()
 }
 
 //Rollback will undo all mutations to the datastore in this transaction and closes
-func (transaction *Transaction) Rollback() error {
-	return transaction.tx.Rollback()
-}
-
-func (transaction *Transaction) table(t reflect.Type) (tbl *table, ok bool) {
-	return transaction.storm.table(t)
-}
-
-func (transaction *Transaction) tableByName(s string) (tbl *table, ok bool) {
-	return transaction.storm.tableByName(s)
-}
-
-func (transaction *Transaction) logger() *log.Logger {
-	return transaction.storm.log
+func (t *transaction) Rollback() error {
+	return t.tx.Rollback()
 }

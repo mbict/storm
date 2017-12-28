@@ -13,135 +13,170 @@ import (
 	"github.com/mbict/storm/dialect"
 )
 
-var RecordNotFound = sql.ErrNoRows
+var TAG = "db"
 
-//Context interface for Transaction and Query
-type Context interface {
-	DB() sqlCommon
-	Storm() *Storm
-	Dialect() dialect.Dialect
+var (
+	ErrNotStructureType = errors.New("interface is not of type structure")
+	ErrRecordNotFound   = sql.ErrNoRows
+)
 
-	Query() *Query
-	Order(column string, direction SortDirection) *Query
-	Where(condition string, bindAttr ...interface{}) *Query
-	Limit(limit int) *Query
-	Offset(offset int) *Query
-	Find(i interface{}, where ...interface{}) error
-	Dependent(i interface{}, columns ...string) error
+type CRUD interface {
 	Delete(i interface{}) error
 	Save(i interface{}) error
-
-	table(t reflect.Type) (tbl *table, ok bool)
-	tableByName(s string) (tbl *table, ok bool)
-	logger() *log.Logger
 }
 
-//Storm structure
-type Storm struct {
-	db        *sql.DB
-	dialect   dialect.Dialect
-	tables    map[reflect.Type]*table
-	tableLock sync.RWMutex
-	log       *log.Logger
+type Storm interface {
+	dbContext
+	Query
+	CRUD
+
+	Begin() (Transaction, error)
+
+	DB() *sql.DB
+	Close() error
+	Register(i interface{}) error
+	SetLogger(log *log.Logger)
 }
 
 //DB is a alias for Storm
-type DB Storm
+type DB = Storm
+
+//Storm structure
+type storm struct {
+	_db       *sql.DB
+	_dialect  dialect.Dialect
+	tables    schemes
+	tableLock sync.RWMutex
+	log       *log.Logger
+
+	namingStrategy NamingStrategy
+}
+
 
 //Open opens a new connection to the datastore
-func Open(driverName string, dataSourceName string) (*Storm, error) {
+func Open(driverName string, dataSourceName string) (Storm, error) {
 	db, err := sql.Open(driverName, dataSourceName)
-	return &Storm{
-		db:      db,
-		dialect: dialect.New(driverName),
-		tables:  make(map[reflect.Type]*table),
-	}, err
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	return New(db, driverName), nil
 }
 
-//SetMaxIdleConns will the the maxiumum of idle connections
-func (storm *Storm) SetMaxIdleConns(n int) {
-	storm.db.SetMaxIdleConns(n)
+//New creates a new storm instance
+func New(db *sql.DB, driverName string) Storm {
+	return &storm{
+		_db:      db,
+		_dialect: dialect.New(driverName),
+		tables:   make(schemes),
+
+		namingStrategy: DefaultNamingStrategy,
+	}
 }
 
-//SetMaxOpenConns will the the maxiumum open connections
-func (storm *Storm) SetMaxOpenConns(n int) {
-	storm.db.SetMaxOpenConns(n)
-}
+/*****************************************
+  Implementation Storm interface
+ *****************************************/
 
 //DB will return the current connection
-func (storm *Storm) DB() sqlCommon {
-	return storm.db
-}
-
-//Storm will return the storm instance
-func (storm *Storm) Storm() *Storm {
-	return storm
-}
-
-//Ping performs a ping to the datastore to check if we have a valid connection
-func (storm *Storm) Ping() error {
-	return storm.db.Ping()
+func (s *storm) DB() *sql.DB {
+	return s._db
 }
 
 //close database connection
-func (storm *Storm) Close() error {
-	return storm.db.Close()
+func (s *storm) Close() error {
+	return s._db.Close()
 }
 
-//Dialect returns the current dialect used by the connection
-func (storm *Storm) Dialect() dialect.Dialect {
-	return storm.dialect
+//Register will parse the provided structure and links it to a table in the datastore
+func (s *storm) Register(model interface{}) error {
+
+	t := indirect(reflect.TypeOf(model))
+	if t.Kind() != reflect.Struct {
+		return ErrNotStructureType
+	}
+	return s.tables.add(t)
 }
 
-//Log you can assign a new logger
-func (storm *Storm) Log(log *log.Logger) {
-	storm.log = log
+//Begin will start a new transaction connection
+func (s *storm) Begin() (Transaction, error) {
+	tx, err := s._db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	return newTransaction(s, tx), nil
 }
+
+/*****************************************
+  Implementation QueryBuilder interface
+ *****************************************/
 
 //Query Create a new query object
-func (storm *Storm) Query() *Query {
-	return newQuery(storm, nil)
+func (s *storm) Query() Query {
+	return newQuery(s, nil)
 }
 
 //Order will create a new query object and set the order
-func (storm *Storm) Order(column string, direction SortDirection) *Query {
-	return storm.Query().Order(column, direction)
+func (s *storm) Order(column string, direction SortDirection) Query {
+	return s.Query().Order(column, direction)
 }
 
 //Where will create a new query object and add a new where statement
-func (storm *Storm) Where(condition string, bindAttr ...interface{}) *Query {
-	return storm.Query().Where(condition, bindAttr...)
+func (s *storm) Where(condition string, bindAttr ...interface{}) Query {
+	return s.Query().Where(condition, bindAttr...)
 }
 
 //Limit will create a new query object and set the limit
-func (storm *Storm) Limit(limit int) *Query {
-	return storm.Query().Limit(limit)
+func (s *storm) Limit(limit int) Query {
+	return s.Query().Limit(limit)
 }
 
 //Offset will create a new query object and set the offset
-func (storm *Storm) Offset(offset int) *Query {
-	return storm.Query().Offset(offset)
+func (s *storm) Offset(offset int) Query {
+	return s.Query().Offset(offset)
+}
+
+func (s *storm) FetchRelated(columns ...string) Query {
+	return s.Query().FetchRelated(columns...)
+}
+
+func (s *storm) Count(i interface{}) (int64, error) {
+	return s.Query().Count(i)
+}
+
+func (s *storm) First(i interface{}) error {
+	return s.Query().First(i)
 }
 
 //Find will try to retreive the matching structure/entity based on your where statement
 //Example:
 // var row *TestModel
 // s.Find(&row,1)
-func (storm *Storm) Find(i interface{}, where ...interface{}) error {
-	return storm.Query().Find(i, where...)
+func (s *storm) Find(i interface{}, where ...interface{}) error {
+	return s.Query().Find(i, where...)
 }
 
 //Dependent will try to fetch all the related enities and populate the dependent fields (slice and single values)
 //You can provide a list with column names if you only want those fields to be populated
-func (storm *Storm) Dependent(i interface{}, columns ...string) error {
-	return storm.Query().Dependent(i, columns...)
+func (s *storm) FindRelated(i interface{}, columns ...string) error {
+	return s.Query().FindRelated(i, columns...)
 }
 
+/*****************************************
+  Implementation CRUD interface
+ *****************************************/
 //Delete will delete the provided structure from the datastore
-func (storm *Storm) Delete(i interface{}) error {
-	tx := storm.Begin()
-	err := storm.deleteEntity(i, tx)
+func (s *storm) Delete(i interface{}) error {
+	tx, err := s.Begin()
 	if err != nil {
+		return err
+	}
+
+	if err := s.deleteEntity(i, tx); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -149,23 +184,25 @@ func (storm *Storm) Delete(i interface{}) error {
 }
 
 //Save will insert or update the provided structure in the datastore
-func (storm *Storm) Save(i interface{}) error {
-	tx := storm.Begin()
-	err := storm.saveEntity(i, tx)
+func (s *storm) Save(i interface{}) error {
+	tx, err := s.Begin()
 	if err != nil {
+		return err
+	}
+
+	if err := s.saveEntity(i, tx); err != nil {
 		tx.Rollback()
 		return err
 	}
 	return tx.Commit()
 }
 
-//Begin will start a new transaction connection
-func (storm *Storm) Begin() *Transaction {
-	return newTransaction(storm)
-}
+/*****************************************
+  Helper functions for creating
+ *****************************************/
 
 //CreateTable creates new table in the datastore
-func (storm *Storm) CreateTable(i interface{}) error {
+func (s *storm) CreateTable(i interface{}) error {
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -176,22 +213,22 @@ func (storm *Storm) CreateTable(i interface{}) error {
 	}
 
 	//find the table
-	tbl, ok := storm.table(t)
+	tbl, ok := s.table(t)
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", t)
 	}
 
-	sqlCreateTable := storm.generateCreateTableSQL(tbl)
-	if storm.log != nil {
-		storm.log.Println(sqlCreateTable)
+	sqlCreateTable := s.generateCreateTableSQL(tbl)
+	if s.log != nil {
+		s.log.Println(sqlCreateTable)
 	}
 
-	_, err := storm.db.Exec(sqlCreateTable)
+	_, err := s._db.Exec(sqlCreateTable)
 	return err
 }
 
 //DropTable removes the table in the datastore
-func (storm *Storm) DropTable(i interface{}) error {
+func (s *storm) DropTable(i interface{}) error {
 
 	t := reflect.TypeOf(i)
 	if t.Kind() == reflect.Ptr {
@@ -203,83 +240,21 @@ func (storm *Storm) DropTable(i interface{}) error {
 	}
 
 	//find the table
-	tbl, ok := storm.table(t)
+	tbl, ok := s.table(t)
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", t)
 	}
 
-	sqlDropTable := storm.generateDropTableSQL(tbl)
-	if storm.log != nil {
-		storm.log.Println(sqlDropTable)
+	sqlDropTable := s.generateDropTableSQL(tbl)
+	if s.log != nil {
+		s.log.Println(sqlDropTable)
 	}
 
-	_, err := storm.db.Exec(sqlDropTable)
+	_, err := s._db.Exec(sqlDropTable)
 	return err
 }
 
-//RegisterStructure will parse the provided structure and links it to a table in the datastore
-func (storm *Storm) RegisterStructure(i interface{}) error {
-
-	t := reflect.TypeOf(i)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	if t.Kind() != reflect.Struct {
-		return errors.New("provided input is not a structure type")
-	}
-
-	storm.tableLock.Lock()
-	defer storm.tableLock.Unlock()
-	if _, exists := storm.tables[t]; exists == true {
-
-		return fmt.Errorf("duplicate structure, '%s' already exists", t)
-	}
-
-	storm.tables[t] = newTable(reflect.New(t))
-	storm.resolveRelations()
-
-	return nil
-}
-
-//
-func (storm *Storm) resolveRelations() error {
-	for _, tbl := range storm.tables {
-		for _, rel := range tbl.relations {
-
-			//skip already found relations
-			if rel.relTable != nil || rel.relColumn != nil {
-				continue
-			}
-
-			//find related columns One To One
-			colName := rel.name + "_id"
-			for _, relCol := range tbl.columns {
-				if strings.EqualFold(relCol.columnName, colName) {
-					rel.relColumn = relCol
-					break
-				}
-			}
-
-			//find related columns One To Many
-			if relTbl, ok := storm.tables[rel.goSingularType]; ok == true {
-				for _, relCol := range relTbl.columns {
-					if relCol.columnName == tbl.tableName+"_id" {
-						//found a relation (slice type)
-						rel.relTable = relTbl
-						rel.relColumn = relCol
-						break
-					}
-				}
-			}
-
-			//Todo: many to many resolve
-		}
-	}
-	return nil
-}
-
-func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
+func (s *storm) deleteEntity(i interface{}, tx Transaction) (err error) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
 		return errors.New("provided input is not by reference")
@@ -298,19 +273,21 @@ func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 	}
 
 	//find the table
-	tbl, ok := storm.table(v.Type())
+	tbl, ok := s.table(v.Type())
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", v.Type())
 	}
 
-	sqlDelete, bind := storm.generateDeleteSQL(v, tbl)
-	if storm.log != nil {
-		storm.log.Printf("`%s` binding : %v", sqlDelete, bind)
+	sqlDelete, bind := s.generateDeleteSQL(v, tbl)
+	if s.log != nil {
+		s.log.Printf("`%s` binding : %v", sqlDelete, bind)
 	}
 
-	err = tbl.callbacks.invoke(v.Addr(), "OnDelete", tx)
-	if err != nil {
-		return err
+	/* @todo implement dbContext */
+	if cb, ok := v.Addr().Interface().(OnDeleteCallback); ok {
+		if err := cb.OnDelete(nil, v.Addr().Interface()); err != nil {
+			return err
+		}
 	}
 
 	_, err = tx.DB().Exec(sqlDelete, bind...)
@@ -318,10 +295,14 @@ func (storm *Storm) deleteEntity(i interface{}, tx *Transaction) (err error) {
 		return err
 	}
 
-	return tbl.callbacks.invoke(v.Addr(), "OnPostDelete", tx)
+	/* @todo implement dbContext */
+	if cb, ok := v.Addr().Interface().(OnPostDeleteCallback); ok {
+		return cb.OnPostDelete(nil, v.Addr().Interface())
+	}
+	return nil
 }
 
-func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
+func (s *storm) saveEntity(i interface{}, tx Transaction) (err error) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -341,7 +322,7 @@ func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 	}
 
 	//find the table
-	tbl, ok := storm.table(v.Type())
+	tbl, ok := s.table(v.Type())
 	if !ok {
 		return fmt.Errorf("no registered structure for `%s` found", v.Type())
 	}
@@ -355,11 +336,23 @@ func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 		insert := v.FieldByIndex(tbl.aiColumn.goIndex).Int() == 0
 		if insert == true {
 			//insert
-			err = tbl.callbacks.invoke(v.Addr(), "OnInsert", tx)
-			sqlQuery, bind = storm.generateInsertSQL(v, tbl)
+
+			/* @todo implement dbContext */
+			if cb, ok := v.Addr().Interface().(OnInsertCallback); ok {
+				if err := cb.OnInsert(nil, v.Addr().Interface()); err != nil {
+					return err
+				}
+			}
+
+			sqlQuery, bind = s.generateInsertSQL(v, tbl)
 		} else {
-			err = tbl.callbacks.invoke(v.Addr(), "OnUpdate", tx)
-			sqlQuery, bind = storm.generateUpdateSQL(v, tbl)
+			/* @todo implement dbContext */
+			if cb, ok := v.Addr().Interface().(OnUpdateCallback); ok {
+				if err := cb.OnUpdate(nil, v.Addr().Interface()); err != nil {
+					return err
+				}
+			}
+			sqlQuery, bind = s.generateUpdateSQL(v, tbl)
 		}
 
 		//no errors on the before callbacks
@@ -374,43 +367,50 @@ func (storm *Storm) saveEntity(i interface{}, tx *Transaction) (err error) {
 		}
 		defer stmt.Close()
 
-		if storm.log != nil {
-			storm.log.Printf("`%s` binding : %v", sqlQuery, bind)
+		if s.log != nil {
+			s.log.Printf("`%s` binding : %v", sqlQuery, bind)
 		}
 
 		if insert == true {
 			var id int64
-			id, err = storm.dialect.InsertAutoIncrement(stmt, bind...)
+			id, err = s._dialect.InsertAutoIncrement(stmt, bind...)
 			v.FieldByIndex(tbl.aiColumn.goIndex).SetInt(id)
 			if err != nil {
 				return err
 			}
-			err = tbl.callbacks.invoke(v.Addr(), "OnPostInsert", tx)
+
+			/* @todo implement dbContext */
+			if cb, ok := v.Addr().Interface().(OnPostInsertCallback); ok {
+				return cb.OnPostInsert(nil, v.Addr().Interface())
+			}
 		} else {
 			_, err = stmt.Exec(bind...)
 			if err != nil {
 				return err
 			}
-			err = tbl.callbacks.invoke(v.Addr(), "OnPostUpdate", tx)
+			/* @todo implement dbContext */
+			if cb, ok := v.Addr().Interface().(OnPostUpdateCallback); ok {
+				return cb.OnPostUpdate(nil, v.Addr().Interface())
+			}
 		}
 		return err
 	}
 	return errors.New("no PK auto increment field defined dont know yet if to update or insert")
 }
 
-func (storm *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (s *storm) generateDeleteSQL(v reflect.Value, tbl *schema) (string, []interface{}) {
 	var (
 		sqlQuery bytes.Buffer
 		pos      int
 		bind     = make([]interface{}, 0)
 	)
 
-	sqlQuery.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tbl.tableName))
+	sqlQuery.WriteString(fmt.Sprintf("DELETE FROM `%s` WHERE ", tbl.name))
 	for _, col := range tbl.keys {
 		if pos > 0 {
 			sqlQuery.WriteString(" AND ")
 		}
-		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.name))
 
 		bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
 		pos++
@@ -419,7 +419,7 @@ func (storm *Storm) generateDeleteSQL(v reflect.Value, tbl *table) (string, []in
 	return sqlQuery.String(), bind
 }
 
-func (storm *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (s *storm) generateInsertSQL(v reflect.Value, tbl *schema) (string, []interface{}) {
 	var (
 		sqlColumns bytes.Buffer
 		sqlValues  bytes.Buffer
@@ -434,24 +434,24 @@ func (storm *Storm) generateInsertSQL(v reflect.Value, tbl *table) (string, []in
 				sqlValues.WriteString(", ")
 			}
 
-			sqlColumns.WriteString(fmt.Sprintf("`%s`", col.columnName))
+			sqlColumns.WriteString(fmt.Sprintf("`%s`", col.name))
 			sqlValues.WriteString("?")
 			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
 			pos++
 		}
 	}
 
-	return fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", tbl.tableName, sqlColumns.String(), sqlValues.String()), bind
+	return fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)", tbl.name, sqlColumns.String(), sqlValues.String()), bind
 }
 
-func (storm *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []interface{}) {
+func (s *storm) generateUpdateSQL(v reflect.Value, tbl *schema) (string, []interface{}) {
 	var (
 		sqlQuery bytes.Buffer
 		pos      int
 		bind     = make([]interface{}, 0)
 	)
 
-	sqlQuery.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tbl.tableName))
+	sqlQuery.WriteString(fmt.Sprintf("UPDATE `%s` SET ", tbl.name))
 
 	for _, col := range tbl.columns {
 		if col != tbl.aiColumn {
@@ -459,7 +459,7 @@ func (storm *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []in
 				sqlQuery.WriteString(", ")
 			}
 
-			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.name))
 			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
 			pos++
 		}
@@ -469,14 +469,14 @@ func (storm *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []in
 	pos = 0
 
 	if tbl.aiColumn != nil {
-		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", tbl.aiColumn.columnName))
+		sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", tbl.aiColumn.name))
 		bind = append(bind, v.FieldByIndex(tbl.aiColumn.goIndex).Interface())
 	} else {
 		for _, col := range tbl.keys {
 			if pos > 0 {
 				sqlQuery.WriteString(" AND ")
 			}
-			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.columnName))
+			sqlQuery.WriteString(fmt.Sprintf("`%s` = ?", col.name))
 			bind = append(bind, v.FieldByIndex(col.goIndex).Interface())
 			pos++
 		}
@@ -484,46 +484,60 @@ func (storm *Storm) generateUpdateSQL(v reflect.Value, tbl *table) (string, []in
 	return sqlQuery.String(), bind
 }
 
-func (storm *Storm) generateCreateTableSQL(tbl *table) string {
+func (s *storm) generateCreateTableSQL(tbl *schema) string {
 	var columns []string
 	for _, col := range tbl.columns {
 		column := reflect.Zero(col.goType).Interface()
 		params := ""
 		if tbl.aiColumn == col {
-			params = " " + storm.dialect.SqlPrimaryKey(column, 0)
+			params = " " + s._dialect.SqlPrimaryKey(column, 0)
 		}
-		columns = append(columns, storm.dialect.Quote(col.columnName)+" "+storm.dialect.SqlType(column, 0)+params)
+		columns = append(columns, s._dialect.Quote(col.name)+" "+s._dialect.SqlType(column, 0)+params)
 	}
 
-	return fmt.Sprintf("CREATE TABLE %s (%s)", storm.dialect.Quote(tbl.tableName), strings.Join(columns, ","))
+	return fmt.Sprintf("CREATE TABLE %s (%s)", s._dialect.Quote(tbl.name), strings.Join(columns, ","))
 }
 
-func (storm *Storm) generateDropTableSQL(tbl *table) string {
-	return fmt.Sprintf("DROP TABLE %s", storm.dialect.Quote(tbl.tableName))
+func (s *storm) generateDropTableSQL(tbl *schema) string {
+	return fmt.Sprintf("DROP TABLE %s", s._dialect.Quote(tbl.name))
 }
 
 //find a table
-func (storm *Storm) table(t reflect.Type) (tbl *table, ok bool) {
+func (s *storm) table(t reflect.Type) (tbl *schema, ok bool) {
+	s.tableLock.RLock()
+	defer s.tableLock.RUnlock()
 
-	storm.tableLock.RLock()
-	defer storm.tableLock.RUnlock()
-
-	tbl, ok = storm.tables[t]
-	return
+	tbl, err := s.tables.find(t)
+	return tbl, err == nil
 }
 
 //find table by name
-func (storm *Storm) tableByName(s string) (tbl *table, ok bool) {
-	storm.tableLock.RLock()
-	defer storm.tableLock.RUnlock()
-	for _, tbl := range storm.tables {
-		if strings.EqualFold(tbl.tableName, s) {
-			return tbl, true
-		}
-	}
-	return nil, false
+func (s *storm) tableByName(name string) (*schema, bool) {
+	s.tableLock.RLock()
+	defer s.tableLock.RUnlock()
+	tbl, err := s.tables.findByName(name)
+	return tbl, err == nil
 }
 
-func (storm *Storm) logger() *log.Logger {
-	return storm.log
+//Storm will return the storm instance
+func (s *storm) storm() Storm {
+	return s
+}
+
+func (s *storm) db() sqlCommon {
+	return s._db
+}
+
+//Dialect returns the current _dialect used by the connection
+func (s *storm) dialect() dialect.Dialect {
+	return s._dialect
+}
+
+//Log you can assign a new logger
+func (s *storm) SetLogger(log *log.Logger) {
+	s.log = log
+}
+
+func (s *storm) logger() *log.Logger {
+	return s.log
 }
